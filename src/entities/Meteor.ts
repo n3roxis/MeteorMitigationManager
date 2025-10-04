@@ -11,10 +11,7 @@ export class Meteor implements UpdatableEntity {
   color: number;
 
   position: Vector;
-
-  dx: number;
-  dy: number;
-  dz: number;
+  velocity: Vector;
 
   private gfx: Graphics | null = null;
 
@@ -22,9 +19,7 @@ export class Meteor implements UpdatableEntity {
     this.id = id;
     this.color = color;
     this.position = new Vector(x, y, z);
-    this.dx = dx;
-    this.dy = dy;
-    this.dz = dz;
+    this.velocity = new Vector(dx, dy, dz);
   }
 
   start(app: Application) {
@@ -33,28 +28,28 @@ export class Meteor implements UpdatableEntity {
   }
 
   update(dt: number): void {
-    var acc: Vector = new Vector(0, 0, 0);
-    for (const body of PLANETS) {
-      const mass = body.massEarths;
-      const distanceVector = this.position.subtract(body.position);
-      const distance = distanceVector.length();
-      const singleAcc = mass / distance * GxMExAU
-      const singleAccVector = distanceVector.normalized().scale(singleAcc);
-      acc = acc.add(singleAccVector)
+    if (dt !== 0) {
+      let acc: Vector = new Vector(0, 0, 0);
+      for (const body of PLANETS) {
+        const mass = body.massEarths;
+        const distanceVector = this.position.subtract(body.position);
+        const distance = distanceVector.length();
+        const singleAcc = - mass / distance * GxMExAU
+        const singleAccVector = distanceVector.normalized().scale(singleAcc);
+        acc = acc.add(singleAccVector)
+      }
+
+      acc = acc.scale((SIM_DAYS_PER_REAL_SECOND * SECONDS_PER_DAY) ** -2);
+      acc = acc.scale(15);
+
+      this.velocity = this.velocity.add(acc.scale(dt));
+      this.position = this.position.add(this.velocity.scale(dt));
     }
-    acc = acc.scale(-1)
-    acc = acc.scale((SIM_DAYS_PER_REAL_SECOND * SECONDS_PER_DAY) ** -2);
-    acc = acc.scale(dt !== 0 ? 1 / dt : 0);
-    acc = acc.scale(1/10000);
-    this.dx += acc.x;
-    this.dy += acc.y;
-    this.dz += acc.z;
-    this.position = this.position.add(new Vector(this.dx, this.dy, this.dz));
 
     // Redraw radius each update
     if (this.gfx) {
       this.gfx.clear();
-      this.gfx.circle(0, 0, MIN_PIXEL_RADIUS*5).fill(this.color);
+      this.gfx.circle(0, 0, MIN_PIXEL_RADIUS * 5).fill(this.color);
       // Set position here based on scaled orbital coordinates; parent container will be centered
       this.gfx.position.set(this.position.x * POSITION_SCALE, this.position.y * POSITION_SCALE);
     }

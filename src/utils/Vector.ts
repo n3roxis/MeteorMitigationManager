@@ -1,34 +1,45 @@
-
 export class Vector {
-    x: number;
-    y: number;
-    z: number;
+  /**
+   * Immutable 3D vector
+   */
+  x: number;
+  y: number;
+  z: number;
 
-    constructor(x: number, y: number, z: number) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
-    }
+  constructor(x: number, y: number, z: number) {
+    this.x = x;
+    this.y = y;
+    this.z = z;
+  }
 
-    add(b: Vector): Vector {
-        return Vector.add(this, b);
-    }
+  add(b: Vector): Vector {
+    return Vector.add(this, b);
+  }
 
-    subtract(b: Vector): Vector {
-        return Vector.subtract(this, b);
-    }
+  subtract(b: Vector): Vector {
+    return Vector.subtract(this, b);
+  }
 
-    length(): number {
-        return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
-    }
+  length(): number {
+    return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+  }
 
-    static add(a: Vector, b: Vector): Vector {
-        return new Vector(a.x + b.x, a.y + b.y, a.z + b.z);
-    }
+  normalized(): Vector {
+    const l = this.length();
+    return new Vector(this.x / l, this.y / l, this.z / l);
+  }
 
-    static subtract(a: Vector, b: Vector): Vector {
-        return new Vector(a.x - b.x, a.y - b.y, a.z - b.z);
-    }
+  scale(s: number): Vector {
+    return new Vector(this.x * s, this.y * s, this.z * s);
+  }
+
+  static add(a: Vector, b: Vector): Vector {
+    return new Vector(a.x + b.x, a.y + b.y, a.z + b.z);
+  }
+
+  static subtract(a: Vector, b: Vector): Vector {
+    return new Vector(a.x - b.x, a.y - b.y, a.z - b.z);
+  }
 
 
 }

@@ -1,7 +1,7 @@
 import { Application, Graphics } from 'pixi.js';
 import { UpdatableEntity } from './Entity';
 import { Orbit } from './Orbit';
-import { RADIUS_SCALE, MIN_PIXEL_RADIUS, POSITION_SCALE } from '../config/scales';
+import { RADIUS_SCALE, MIN_PIXEL_RADIUS, POSITION_SCALE, AU_IN_KM } from '../config/scales';
 import { SIM_TIME_SECONDS } from '../state/simulation';
 import { meanAnomaly, solveEccentricAnomaly, orbitalPlanePosition, rotateOrbitalToXYZ } from '../utils/orbitalMath';
 
@@ -10,16 +10,18 @@ export class Planet implements UpdatableEntity {
   x = 0;
   y = 0;
   z = 0;
-  radiusMillionKm: number;
+  radiusKm: number; // radius in kilometers
+  massEarths: number; // mass in Earth masses
   color: number;
   orbit?: Orbit;
   phase: number;
   private gfx: Graphics | null = null;
   // Removed internal time accumulator; now uses global SIM_TIME_SECONDS
 
-  constructor(id: string, radiusMillionKm: number, color: number, orbit?: Orbit, phase: number = 0) {
+  constructor(id: string, radiusKm: number, massEarths: number, color: number, orbit?: Orbit, phase: number = 0) {
     this.id = id;
-    this.radiusMillionKm = radiusMillionKm;
+    this.radiusKm = radiusKm;
+    this.massEarths = massEarths;
     this.color = color;
     this.orbit = orbit;
     this.phase = phase;
@@ -49,7 +51,9 @@ export class Planet implements UpdatableEntity {
 
     // Redraw radius each update
     if (this.gfx) {
-      const pr = Math.max(this.radiusMillionKm * RADIUS_SCALE, MIN_PIXEL_RADIUS);
+  // Convert physical radius (km) to AU, scale to pixels, apply exaggeration factor
+  const pixelPhysical = (this.radiusKm / AU_IN_KM) * POSITION_SCALE;
+  const pr = Math.max(pixelPhysical * RADIUS_SCALE, MIN_PIXEL_RADIUS);
       this.gfx.clear();
       this.gfx.circle(0, 0, pr).fill(this.color);
       // Set position here based on scaled orbital coordinates; parent container will be centered

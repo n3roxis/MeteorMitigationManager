@@ -1,18 +1,16 @@
 import {UpdatableEntity} from "./Entity";
 import {Application, Graphics} from "pixi.js";
-import {MIN_PIXEL_RADIUS, POSITION_SCALE, RADIUS_SCALE, SIM_DAYS_PER_REAL_SECOND} from "../config/scales";
-import {PLANETS} from "../data/planets";
+import {MIN_PIXEL_RADIUS, POSITION_SCALE, SIM_DAYS_PER_REAL_SECOND} from "../config/scales";
 import {Vector} from "../utils/Vector";
-import {DEBUG_AU, GxMExAU, SECONDS_PER_DAY} from "../utils/constants";
+import {PLANETS} from "../data/bodies";
+import {GxMExAU, SECONDS_PER_DAY} from "../utils/constants";
 
 export class Meteor implements UpdatableEntity {
 
   id: string;
   color: number;
 
-  x: number;
-  y: number;
-  z: number;
+  position: Vector;
 
   dx: number;
   dy: number;
@@ -23,9 +21,7 @@ export class Meteor implements UpdatableEntity {
   constructor(id: string, x: number, y: number, z: number, dx: number = 0, dy: number = 0, dz: number = 0, color: number = 0xc0c0c0) {
     this.id = id;
     this.color = color;
-    this.x = x;
-    this.y = y;
-    this.z = z;
+    this.position = new Vector(x, y, z);
     this.dx = dx;
     this.dy = dy;
     this.dz = dz;
@@ -37,12 +33,10 @@ export class Meteor implements UpdatableEntity {
   }
 
   update(dt: number): void {
-    const position = new Vector(this.x, this.y, this.z);
     var acc: Vector = new Vector(0, 0, 0);
     for (const body of PLANETS) {
-      const bodyLoc = new Vector(body.x, body.y, body.z);
       const mass = body.massEarths;
-      const distanceVector = position.subtract(bodyLoc);
+      const distanceVector = this.position.subtract(body.position);
       const distance = distanceVector.length();
       const singleAcc = mass / distance * GxMExAU
       const singleAccVector = distanceVector.normalized().scale(singleAcc);
@@ -55,16 +49,14 @@ export class Meteor implements UpdatableEntity {
     this.dx += acc.x;
     this.dy += acc.y;
     this.dz += acc.z;
-    this.x += this.dx;
-    this.y += this.dy;
-    this.z += this.dz;
+    this.position = this.position.add(new Vector(this.dx, this.dy, this.dz));
 
     // Redraw radius each update
     if (this.gfx) {
       this.gfx.clear();
       this.gfx.circle(0, 0, MIN_PIXEL_RADIUS*5).fill(this.color);
       // Set position here based on scaled orbital coordinates; parent container will be centered
-      this.gfx.position.set(this.x * POSITION_SCALE, this.y * POSITION_SCALE);
+      this.gfx.position.set(this.position.x * POSITION_SCALE, this.position.y * POSITION_SCALE);
     }
   }
 

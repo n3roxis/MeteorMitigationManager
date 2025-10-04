@@ -41,5 +41,8 @@ export class Vector {
     return new Vector(a.x - b.x, a.y - b.y, a.z - b.z);
   }
 
+  static zero(){
+    return new Vector(0,0,0);
+  }
 
 }

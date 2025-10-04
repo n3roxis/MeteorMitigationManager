@@ -9,6 +9,7 @@ export const toMercator = (lambda:number,phi:number) =>{
 
 export class Impact{
     mass:number
+    density:number
     velocity:number
     angle:number
     longLat:{lamb: number,phi: number}
@@ -16,8 +17,9 @@ export class Impact{
     /**
      * longLat = longitude Latitude in a 2 tuple in named order
      */
-    constructor(mass:number,velocity:number,angle:number,longLat:{lamb: number, phi: number}){
+    constructor(mass:number,density:number,velocity:number,angle:number,longLat:{lamb: number, phi: number}){
         this.mass = mass;
+        this.density = density;
         this.velocity = velocity;
         this.angle = angle;
         this.longLat = longLat;
@@ -38,7 +40,6 @@ export class SanitizedImpact{
 export class DataBroker {
     static #instance: DataBroker;
     private _impact:Impact | null = null;
-    private _inUse:boolean = false;
     private constructor() { }
 
     public static get instance(): DataBroker {
@@ -49,26 +50,11 @@ export class DataBroker {
         return DataBroker.#instance;
     }
 
-    /**
-     * 
-     * @returns used impact data and clears used state
-     */
     public getImpact():Impact | null{
-        this._inUse = false;
         return this._impact;
     }
 
-    /**
-     * 
-     * @param impact sets impact data if data is not in use
-     * @returns false if data is in use
-     */
-    public setImpact(impact:Impact){
-        if(!this._inUse){
-            this._inUse = true;
-            this._impact = impact;
-        }else{
-            return false;
-        }
+    public setImpact(impact:Impact | null){
+        this._impact = impact;
     }
 }

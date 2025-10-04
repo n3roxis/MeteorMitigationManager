@@ -1,15 +1,13 @@
-import { useEffect, useRef } from 'react';
 import { Application, Container } from 'pixi.js';
-import { PLANETS, BODIES, MOON, EARTH_MOON_BARYCENTER, SUN } from '../data/bodies';
-import { ORBITS } from '../data/orbits';
-import { updateScales, POSITION_SCALE } from '../config/scales';
-import { advanceSimulation, resetSimulationTime } from '../state/simulation';
-import { ENTITIES, registerEntity, clearEntities } from '../state/entities';
-import { MOON_ORBIT } from '../data/orbits';
-import { Moon } from '../entities/Moon';
-import { Orbit } from '../entities/Orbit';
-import { GlowEffect } from '../entities/GlowEffect';
-import {METEORS} from "../data/meteors";
+import { useEffect, useRef } from 'react';
+import { POSITION_SCALE, updateScales } from '../../../config/scales';
+import { EARTH_MOON_BARYCENTER, MOON, PLANETS, SUN } from '../../../data/bodies';
+import { METEORS } from "../../../data/meteors";
+import { ORBITS } from '../../../data/orbits';
+import { GlowEffect } from '../../../entities/GlowEffect';
+import { Orbit } from '../../../entities/Orbit';
+import { clearEntities, ENTITIES, registerEntity } from '../../../state/entities';
+import { advanceSimulation, resetSimulationTime } from '../../../state/simulation';
 
 export const SolarSystemPanel = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);

@@ -1,8 +1,8 @@
-import { Application, Assets, Graphics, Sprite } from 'pixi.js';
+import { Application, Assets, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
 import WorldMap from './resources/WorldMap.png';
 
-import {Viewport} from 'pixi-viewport';
+import { Viewport } from 'pixi-viewport';
 
 // Placeholder world map panel to build on later
 export const WorldMapPanel: React.FC = () => {
@@ -30,15 +30,13 @@ export const WorldMapPanel: React.FC = () => {
             events: app.renderer.events
           });
           viewport.drag().decelerate().pinch().wheel()
-          viewport.fit();
-
-          
 
           const tex = await Assets.load(WorldMap);
           const map = new Sprite(tex);
           map.anchor.set(0.5,0.5);
-          map.position.set()
+          map.position.set(0,0)
           viewport.addChild(map);
+          viewport.fit();
   
           // Resize observer to keep canvas filling the half panel
           const ro = new ResizeObserver(entries => {

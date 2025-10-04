@@ -30,6 +30,9 @@ export const WorldMapPanel: React.FC = () => {
             events: app.renderer.events
           });
           viewport.drag().decelerate().pinch().wheel()
+          viewport.fit();
+
+          
 
           const tex = await Assets.load(WorldMap);
           const map = new Sprite(tex);

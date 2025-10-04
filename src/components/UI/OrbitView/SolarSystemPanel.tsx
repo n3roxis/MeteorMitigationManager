@@ -6,8 +6,9 @@ import {METEORS} from "../../../solar_system/data/meteors";
 import {GlowEffect} from "../../../solar_system/entities/GlowEffect";
 import {clearEntities, ENTITIES, registerEntity} from "../../../solar_system/state/entities";
 import {advanceSimulation, resetSimulationTime} from "../../../solar_system/state/simulation";
-import {POSITION_SCALE, SIM_DAYS_PER_REAL_SECOND, updateScales} from "../../../solar_system/config/scales";
+import {POSITION_SCALE, updateScales, getSimDaysPerPhysicsTick, PHYSICS_TICKS_PER_SECOND} from "../../../solar_system/config/scales";
 import {Orbit} from "../../../solar_system/entities/Orbit";
+import { PathPredictor } from "../../../solar_system/entities/PathPredictor";
 
 export const SolarSystemPanel = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -20,11 +21,24 @@ export const SolarSystemPanel = () => {
     if (!el) return;
 
     let disposed = false;
-    const app = new Application();
+  const app = new Application();
+  // Performance overlay DOM element
+  const perfDiv = document.createElement('div');
+  perfDiv.style.position = 'absolute';
+  perfDiv.style.top = '4px';
+  perfDiv.style.left = '6px';
+  perfDiv.style.padding = '4px 6px';
+  perfDiv.style.background = 'rgba(0,0,0,0.45)';
+  perfDiv.style.color = '#fff';
+  perfDiv.style.font = '12px monospace';
+  perfDiv.style.pointerEvents = 'none';
+  perfDiv.style.borderRadius = '4px';
+  el.appendChild(perfDiv);
     let centerX = 0; // viewport center in pixels
     let centerY = 0;
     const scene = new Container();
     app.stage.addChild(scene);
+  // Camera now always centers on Earth-Moon barycenter (previous sun toggle removed)
 
     // One-time initialization
     const init = async () => {
@@ -56,6 +70,10 @@ export const SolarSystemPanel = () => {
         m.start(app);
         const gfx = m.graphics; if (gfx) scene.addChild(gfx); // reparent
         registerEntity(m);
+        const predictor = new PathPredictor(`${m.id}-predictor`, m);
+        predictor.start(app);
+        const pg = predictor.graphics; if (pg) scene.addChild(pg);
+        registerEntity(predictor);
       }
 
       // Add Moon body (already defined in bodies.ts)
@@ -66,32 +84,70 @@ export const SolarSystemPanel = () => {
       resetSimulationTime();
 
       resizeToElement();
-      app.ticker.add(tick);
+      startFixedLoop();
+    };
+    // Fixed timestep physics loop @ PHYSICS_TICKS_PER_SECOND
+  const physicsDtSimDays = getSimDaysPerPhysicsTick();
+    const physicsDtSimSeconds = physicsDtSimDays * 86400;
+    let accumulatorMs = 0;
+    let lastMs = performance.now();
+  // Stats accumulation
+  let frames = 0;
+  let physicsTicks = 0;
+  let statsTimer = 0; // ms
+  let lastPerfUpdate = 0;
+
+    const physicsStep = () => {
+      advanceSimulation(physicsDtSimDays); // sim time advanced in days
+      for (const e of ENTITIES) { if (!(e instanceof (Orbit as any))) e.update(physicsDtSimSeconds); }
+      for (const e of ENTITIES) { if (e instanceof (Orbit as any)) e.update(physicsDtSimSeconds); }
+      physicsTicks++;
     };
 
-    // Per-tick update (simulation logic placeholder)
-    const tick = (ticker: { deltaMS: number }) => {
-      if (disposed) return;
-      const realDtSeconds = ticker.deltaMS / 1000 * 86400 * SIM_DAYS_PER_REAL_SECOND; // scale real time -> simulation days
-      advanceSimulation(realDtSeconds);
-      for (const e of ENTITIES) {
-        if (!(e instanceof (Orbit as any))) e.update(realDtSeconds);
-      }
-      for (const e of ENTITIES) {
-        if (e instanceof (Orbit as any)) e.update(realDtSeconds);
-      }
-      if (EARTH_MOON_BARYCENTER) {
-        const tx = EARTH_MOON_BARYCENTER.position.x * POSITION_SCALE;
-        const ty = EARTH_MOON_BARYCENTER.position.y * POSITION_SCALE;
-        scene.position.set(centerX - tx, centerY - ty);
-      }
+    const startFixedLoop = () => {
+      const tickMs = 1000 / PHYSICS_TICKS_PER_SECOND;
+      const loop = () => {
+        if (disposed) return;
+        const now = performance.now();
+        let frame = now - lastMs;
+        if (frame > 250) frame = 250; // clamp pause
+        lastMs = now;
+        accumulatorMs += frame;
+        while (accumulatorMs >= tickMs) {
+          physicsStep();
+          accumulatorMs -= tickMs;
+        }
+        // Camera update after physics
+        if (EARTH_MOON_BARYCENTER) {
+          const tx = EARTH_MOON_BARYCENTER.position.x * POSITION_SCALE;
+          const ty = EARTH_MOON_BARYCENTER.position.y * POSITION_SCALE;
+          scene.position.set(centerX - tx, centerY - ty);
+        }
+        app.render();
+        frames++;
+        statsTimer += frame;
+        if (now - lastPerfUpdate >= 500) { // update overlay twice a second
+          const fps = (frames * 1000) / statsTimer;
+          const pps = (physicsTicks * 1000) / statsTimer;
+          perfDiv.textContent = `FPS ${fps.toFixed(1)} | Physics ${pps.toFixed(1)}Hz`;
+          frames = 0;
+          physicsTicks = 0;
+          statsTimer = 0;
+          lastPerfUpdate = now;
+        }
+        requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
     };
 
     const resizeToElement = () => {
       if (disposed) return;
       const rect = el.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
-        app.renderer.resize(rect.width, rect.height);
+  app.renderer.resize(rect.width, rect.height);
+  for (const e of ENTITIES) { if ((e as any).markDirty) (e as any).markDirty(); }
+        // Force immediate predictor rebuild pass (zero dt update) for visual responsiveness
+        for (const e of ENTITIES) { if ((e as any).markDirty && (e as any).recomputePath) (e as any).update(0); }
         centerX = rect.width / 2;
         centerY = rect.height / 2;
       }
@@ -103,7 +159,10 @@ export const SolarSystemPanel = () => {
       e.preventDefault();
       // Increased zoom sensitivity (was 1.1); 1.2 ~ double the per-notch scale change
       const zoomFactor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
-      updateScales(zoomFactor);
+  updateScales(zoomFactor);
+  for (const e of ENTITIES) { if ((e as any).markDirty) (e as any).markDirty(); }
+  // Force predictors to rebuild instantly so zoom feedback is immediate
+  for (const e of ENTITIES) { if ((e as any).markDirty && (e as any).recomputePath) (e as any).update(0); }
       // Entities will detect scale change and redraw in their update; immediately reposition
       // Force redraw in two phases for consistency after zoom
       for (const e of ENTITIES) { if (!(e instanceof (Orbit as any))) e.update(0); }
@@ -118,21 +177,39 @@ export const SolarSystemPanel = () => {
 
     el.addEventListener('wheel', onWheel, { passive: false });
 
+    // Removed key listener for camera mode (sun/barycenter) toggling.
+
     const ro = new ResizeObserver(resizeToElement);
     ro.observe(el);
     (app as any)._ro = ro;
 
     init().catch(err => console.error('[SolarSystemPanel] init error', err));
 
+    const markAllDirty = (forceImmediate = false) => {
+      for (const e of ENTITIES) { if ((e as any).markDirty) (e as any).markDirty(); }
+      if (forceImmediate) {
+        // Run a zero-dt update pass so geometry appears instantly after tab switch
+        for (const e of ENTITIES) { (e as any).update && (e as any).update(0); }
+      }
+    };
+    const onFocus = () => { markAllDirty(true); };
+    const onVisibility = () => { if (document.visibilityState === 'visible') markAllDirty(true); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
       disposed = true;
-      el.removeEventListener('wheel', onWheel as any);
+      if (perfDiv.parentElement) perfDiv.parentElement.removeChild(perfDiv);
+  el.removeEventListener('wheel', onWheel as any);
+  window.removeEventListener('focus', onFocus);
+  document.removeEventListener('visibilitychange', onVisibility);
       const ro: ResizeObserver | undefined = (app as any)._ro;
       if (ro) ro.disconnect();
       for (const e of ENTITIES) e.destroy();
       clearEntities();
       if ((app as any).renderer) app.destroy(true, { children: true, texture: true });
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;

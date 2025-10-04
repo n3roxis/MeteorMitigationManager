@@ -25,7 +25,7 @@ export const SATURN_ORBIT  = new Orbit('saturn-orbit', 9.5549, 0.0565, 10759.22,
 export const URANUS_ORBIT  = new Orbit('uranus-orbit', 19.2184, 0.046381, 30685.4, 0x335566, 0.45, 1, 0.773, 74.006, 96.998857);
 export const NEPTUNE_ORBIT = new Orbit('neptune-orbit', 30.1104, 0.008678, 60190.0, 0x334466, 0.45, 1, 1.770, 131.784, 273.187);
 // Moon orbit (parent assigned after EARTH is defined to avoid circular dependency)
-export const MOON_ORBIT = new Orbit('moon-orbit', 384400 / 149597870.7, 0.0549, 27.321661, 0x666666, 0.5, 1, 5.145, 125.08, 318.15);
+export const MOON_ORBIT = new Orbit('moon-orbit', 384400 / 149597870.7, 0.0549, 27.321661, 0xff6666, 0.85, 1, 5.145, 125.08, 318.15);
 
 // Aggregate array for iteration elsewhere
 export const ORBITS = [

@@ -5,7 +5,7 @@ import { Vector } from '../utils/Vector';
 import { POSITION_SCALE, RADIUS_SCALE, MIN_PIXEL_RADIUS, AU_IN_KM } from '../config/scales';
 import { meanAnomaly, solveEccentricAnomaly, orbitalPlanePosition, rotateOrbitalToXYZ } from '../utils/orbitalMath';
 import { Orbit } from './Orbit';
-import { SIM_TIME_SECONDS } from '../state/simulation';
+import { SIM_TIME_DAYS } from '../state/simulation';
 
 // Moon now uses a normal Orbit instance (with parent) for drawing. This class only updates
 // the moon body's position relative to its parent and the orbit parameters.
@@ -36,7 +36,7 @@ export class Moon implements UpdatableEntity {
         app.stage.addChild(this.gfx);
     }
 
-    update(dt: number): void { // dt unused; time from global
+    update(): void { // time from global
         // Parent absolute position
         const px = this.parent.position.x;
         const py = this.parent.position.y;
@@ -44,7 +44,7 @@ export class Moon implements UpdatableEntity {
 
         const { semiMajorAxis, eccentricity, periodDays, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg } = this.orbit as any;
         const periodSec = periodDays * 86400;
-        const M = meanAnomaly(SIM_TIME_SECONDS, this.phase, periodSec);
+    const M = meanAnomaly(SIM_TIME_DAYS * 86400, this.phase, periodSec);
         const E = solveEccentricAnomaly(M, eccentricity);
         const [xPrime, yPrime] = orbitalPlanePosition(semiMajorAxis, eccentricity, E);
         const [rx, ry, rz] = rotateOrbitalToXYZ(xPrime, yPrime, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg);

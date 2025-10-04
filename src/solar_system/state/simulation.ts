@@ -1,12 +1,11 @@
-// Global simulation time in seconds (sidereal days converted to seconds)
-export let SIM_TIME_SECONDS = 0;
+// Global simulation time stored in DAYS for clarity.
+export let SIM_TIME_DAYS = 0;
 
 export function resetSimulationTime() {
-  SIM_TIME_SECONDS = 0;
+  SIM_TIME_DAYS = 0;
 }
 
 // Advance simulation by a delta expressed directly in simulation days
 export function advanceSimulation(simDeltaDays: number) {
-  // Convert days -> seconds
-  SIM_TIME_SECONDS += simDeltaDays;
+  SIM_TIME_DAYS += simDeltaDays;
 }

@@ -1,10 +1,9 @@
 import { Application } from 'pixi.js';
+import { Vector } from '../utils/Vector';
 
 export interface UpdatableEntity {
   id: string;
-  x: number;
-  y: number;
-  z: number;
+  position: Vector;
   start(app: Application): void;
   update(dt: number): void;
   destroy(): void;

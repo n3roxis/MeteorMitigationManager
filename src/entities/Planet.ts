@@ -2,14 +2,13 @@ import { Application, Graphics } from 'pixi.js';
 import { UpdatableEntity } from './Entity';
 import { Orbit } from './Orbit';
 import { RADIUS_SCALE, MIN_PIXEL_RADIUS, POSITION_SCALE, AU_IN_KM } from '../config/scales';
+import { Vector } from '../utils/Vector';
 import { SIM_TIME_SECONDS } from '../state/simulation';
 import { meanAnomaly, solveEccentricAnomaly, orbitalPlanePosition, rotateOrbitalToXYZ } from '../utils/orbitalMath';
 
 export class Planet implements UpdatableEntity {
   id: string;
-  x = 0;
-  y = 0;
-  z = 0;
+  position: Vector = new Vector(0,0,0);
   radiusKm: number; // radius in kilometers
   massEarths: number; // mass in Earth masses
   color: number;
@@ -40,13 +39,13 @@ export class Planet implements UpdatableEntity {
       const E = solveEccentricAnomaly(M, eccentricity);
       const [xPrime, yPrime] = orbitalPlanePosition(semiMajorAxis, eccentricity, E);
       const [x, y, z] = rotateOrbitalToXYZ(xPrime, yPrime, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg);
-      this.x = x;
-      this.y = y;
-      this.z = z;
+      this.position.x = x;
+      this.position.y = y;
+      this.position.z = z;
     } else {
-      this.x = 0;
-      this.y = 0;
-      this.z = 0;
+      this.position.x = 0;
+      this.position.y = 0;
+      this.position.z = 0;
     }
 
     // Redraw radius each update
@@ -57,9 +56,10 @@ export class Planet implements UpdatableEntity {
       this.gfx.clear();
       this.gfx.circle(0, 0, pr).fill(this.color);
       // Set position here based on scaled orbital coordinates; parent container will be centered
-      this.gfx.position.set(this.x * POSITION_SCALE, this.y * POSITION_SCALE);
+      this.gfx.position.set(this.position.x * POSITION_SCALE, this.position.y * POSITION_SCALE);
     }
   }
+
 
   get graphics(): Graphics | null { return this.gfx; }
 

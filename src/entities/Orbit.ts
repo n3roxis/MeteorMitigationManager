@@ -1,13 +1,12 @@
 import { Application, Graphics } from 'pixi.js';
 import { UpdatableEntity } from './Entity';
 import { POSITION_SCALE } from '../config/scales';
+import { Vector } from '../utils/Vector';
 import { sampleOrbit } from '../utils/orbitalMath';
 
 export class Orbit implements UpdatableEntity {
   id: string;
-  x = 0;
-  y = 0;
-  z = 0;
+  position: Vector = new Vector(0,0,0);
   semiMajorAxis: number;
   eccentricity: number;
   periodDays: number;

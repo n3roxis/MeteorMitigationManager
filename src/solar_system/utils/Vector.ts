@@ -20,8 +20,16 @@ export class Vector {
     return Vector.subtract(this, b);
   }
 
+  cross(b: Vector): Vector {
+      return new Vector(
+          this.y * b.z - this.z * b.y,
+          this.z * b.x - this.x * b.z,
+          this.x * b.y - this.y * b.x,
+      )
+  }
+
   length(): number {
-    return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
+    return Math.hypot(this.x, this.y, this.z);
   }
 
   normalized(): Vector {

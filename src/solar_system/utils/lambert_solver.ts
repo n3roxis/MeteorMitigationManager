@@ -1,11 +1,11 @@
 // If your setup prefers require(), uncomment the next two lines and remove the import.
 // // eslint-disable-next-line @typescript-eslint/no-var-requires
 // const cephes: { hyp2f1: (a: number, b: number, c: number, z: number) => number } = require("cephes");
-import { hyp2f1 } from "cephes";
+import {hyp2f1} from "cephes";
+import {Vector} from "./Vector.ts";
 
 const pi = Math.PI;
 
-type Vector3 = [number, number, number];
 
 export interface LambertOptions {
     M?: number;               // revolutions (>= 0)
@@ -16,24 +16,8 @@ export interface LambertOptions {
     rtol?: number;            // relative tolerance
 }
 
-export type LambertResult = [v1: Vector3, v2: Vector3];
+export type LambertResult = [v1: Vector, v2: Vector];
 
-/* ------------------------------ vector helpers ----------------------------- */
-const vAdd = (a: Vector3, b: Vector3): Vector3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
-const vSub = (a: Vector3, b: Vector3): Vector3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const vScale = (a: Vector3, s: number): Vector3 => [a[0] * s, a[1] * s, a[2] * s];
-const vDot = (a: Vector3, b: Vector3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const vCross = (a: Vector3, b: Vector3): Vector3 => [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-];
-const vNorm = (a: Vector3): number => Math.hypot(a[0], a[1], a[2]);
-const vUnit = (a: Vector3): Vector3 => {
-    const n = vNorm(a);
-    if (n === 0) throw new Error("Zero-length vector cannot be normalized");
-    return vScale(a, 1 / n);
-};
 /* -------------------------------------------------------------------------- */
 
 /**
@@ -50,8 +34,8 @@ const vUnit = (a: Vector3): Vector3 => {
  */
 export function lambertIzzo(
     mu: number,
-    r1: Vector3,
-    r2: Vector3,
+    r1: Vector,
+    r2: Vector,
     tof: number,
     opts: LambertOptions = {}
 ): LambertResult {
@@ -68,41 +52,41 @@ export function lambertIzzo(
     validatePositions(r1, r2);
 
     // Chord
-    const c = vSub(r2, r1);
-    const c_norm = vNorm(c);
-    const r1_norm = vNorm(r1);
-    const r2_norm = vNorm(r2);
+    const c = r2.subtract(r1);
+    const c_norm = c.length();
+    const r1_norm = r1.length();
+    const r2_norm = r2.length();
 
     // Semiperimeter
     const s = 0.5 * (r1_norm + r2_norm + c_norm);
 
     // Versors
-    const i_r1 = vUnit(r1);
-    const i_r2 = vUnit(r2);
-    let i_h = vCross(i_r1, i_r2);
-    i_h = vUnit(i_h);
+    const i_r1 = r1.normalized();
+    const i_r2 = r2.normalized();
+    let i_h = i_r1.cross(i_r2);
+    i_h = i_h.normalized();
 
     // Geometry of the problem
     let ll = Math.sqrt(1 - Math.min(1.0, c_norm / s));
 
     // Fundamental tangential directions
-    let i_t1: Vector3;
-    let i_t2: Vector3;
+    let i_t1: Vector;
+    let i_t2: Vector;
 
-    if (i_h[2] < 0) {
+    if (i_h.z < 0) {
         ll = -ll;
-        i_t1 = vCross(i_r1, i_h);
-        i_t2 = vCross(i_r2, i_h);
+        i_t1 = i_r1.cross(i_h);
+        i_t2 = i_r2.cross(i_h);
     } else {
-        i_t1 = vCross(i_h, i_r1);
-        i_t2 = vCross(i_h, i_r2);
+        i_t1 = i_h.cross(i_r1);
+        i_t2 = i_h.cross(i_r2);
     }
 
     // Correct transfer angle / tangential vectors for retrograde
     if (!prograde) {
         ll = -ll;
-        i_t1 = vScale(i_t1, -1);
-        i_t2 = vScale(i_t2, -1);
+        i_t1 = i_t1.scale(-1);
+        i_t2 = i_t2.scale(-1);
     }
 
     // Non-dimensional time of flight
@@ -119,10 +103,10 @@ export function lambertIzzo(
     const [V_r1, V_r2, V_t1, V_t2] = _reconstruct(x, y, r1_norm, r2_norm, ll, gamma, rho, sigma);
 
     // Initial and final velocity vectors
-    const v1 = vAdd(vScale(r1, V_r1 / r1_norm), vScale(i_t1, V_t1));
-    const v2 = vAdd(vScale(r2, V_r2 / r2_norm), vScale(i_t2, V_t2));
+    const v1 = r1.scale(V_r1 / r1_norm).add(i_t1.scale(V_t1));
+    const v2 = r2.scale(V_r2 / r2_norm).add(i_t2.scale(V_t2));
 
-    return [v1, v2];
+    return [new Vector(v1.x, v1.y, v1.z), new Vector(v2.x, v2.y, v2.z)];
 }
 
 /* --------------------------------- checks --------------------------------- */
@@ -130,17 +114,17 @@ function validateGravitationalParam(mu: number): void {
     if (!(mu > 0)) throw new Error("Gravitational parameter must be positive");
 }
 
-function validatePositions(r1: Vector3, r2: Vector3): void {
+function validatePositions(r1: Vector, r2: Vector): void {
     validatePosition(r1);
     validatePosition(r2);
-    const same = vNorm(vSub(r1, r2)) === 0; // strict compare; change to epsilon if desired
+    const same = r1.subtract(r2).length() === 0; // strict compare; change to epsilon if desired
     if (same) throw new Error("Initial and final positions can not be the same");
 }
 
-function validatePosition(r: Vector3): void {
-    if (r.length !== 3) throw new Error("Position vector must be three dimensional");
-    if (r[0] === 0 && r[1] === 0 && r[2] === 0) throw new Error("Position can not be at origin");
+function validatePosition(r: Vector): void {
+    if (r.x === 0 && r.y === 0 && r.z === 0) throw new Error("Position can not be at origin");
 }
+
 /* -------------------------------------------------------------------------- */
 
 /* ---------------------------- core math helpers --------------------------- */
@@ -221,7 +205,7 @@ function _tofEquationY(x: number, y: number, T0: number, ll: number, M: number):
         T_ = 0.5 * (eta ** 3 * Q + 4 * ll * eta);
     } else {
         const psi = _computePsi(x, y, ll);
-        T_ = ( (psi + M * pi) / Math.sqrt(Math.abs(1 - x ** 2)) - x + ll * y ) / (1 - x ** 2);
+        T_ = ((psi + M * pi) / Math.sqrt(Math.abs(1 - x ** 2)) - x + ll * y) / (1 - x ** 2);
     }
 
     return T_ - T0;
@@ -280,7 +264,7 @@ function _initialGuess(T: number, ll: number, M: number, low_path: boolean): num
         if (T >= T0) {
             return (T0 / T) ** (2 / 3) - 1;
         } else if (T < T1) {
-            return ( (5 / 2) * (T1 / T) * (T1 - T) ) / (1 - ll ** 5) + 1;
+            return ((5 / 2) * (T1 / T) * (T1 - T)) / (1 - ll ** 5) + 1;
         } else {
             // T1 < T < T0  (approx form used in your JS)
             return (T0 / T) ** (Math.log2(T1 / T0)) - 1;
@@ -352,4 +336,5 @@ function _householder(
     }
     throw new Error("Failed to converge");
 }
+
 /* -------------------------------------------------------------------------- */

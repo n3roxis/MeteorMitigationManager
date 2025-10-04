@@ -38,7 +38,8 @@ export const SolarSystemPanel = () => {
     let centerY = 0;
     const scene = new Container();
     app.stage.addChild(scene);
-  // Camera now always centers on Earth-Moon barycenter (previous sun toggle removed)
+  // Camera mode toggle (press 'c' to switch between barycenter and sun)
+  let cameraMode: 'barycenter' | 'sun' = 'barycenter';
 
     // One-time initialization
     const init = async () => {
@@ -118,7 +119,11 @@ export const SolarSystemPanel = () => {
           accumulatorMs -= tickMs;
         }
         // Camera update after physics
-        if (EARTH_MOON_BARYCENTER) {
+        if (cameraMode === 'sun' && SUN) {
+          const tx = SUN.position.x * POSITION_SCALE;
+          const ty = SUN.position.y * POSITION_SCALE;
+          scene.position.set(centerX - tx, centerY - ty);
+        } else if (EARTH_MOON_BARYCENTER) {
           const tx = EARTH_MOON_BARYCENTER.position.x * POSITION_SCALE;
           const ty = EARTH_MOON_BARYCENTER.position.y * POSITION_SCALE;
           scene.position.set(centerX - tx, centerY - ty);
@@ -177,7 +182,12 @@ export const SolarSystemPanel = () => {
 
     el.addEventListener('wheel', onWheel, { passive: false });
 
-    // Removed key listener for camera mode (sun/barycenter) toggling.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'c' || e.key === 'C') {
+        cameraMode = cameraMode === 'barycenter' ? 'sun' : 'barycenter';
+      }
+    };
+    window.addEventListener('keydown', onKey);
 
     const ro = new ResizeObserver(resizeToElement);
     ro.observe(el);
@@ -202,6 +212,7 @@ export const SolarSystemPanel = () => {
       if (perfDiv.parentElement) perfDiv.parentElement.removeChild(perfDiv);
   el.removeEventListener('wheel', onWheel as any);
   window.removeEventListener('focus', onFocus);
+  window.removeEventListener('keydown', onKey);
   document.removeEventListener('visibilitychange', onVisibility);
       const ro: ResizeObserver | undefined = (app as any)._ro;
       if (ro) ro.disconnect();

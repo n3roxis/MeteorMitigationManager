@@ -8,5 +8,5 @@ export function resetSimulationTime() {
 // Advance simulation by a delta expressed directly in simulation days
 export function advanceSimulation(simDeltaDays: number) {
   // Convert days -> seconds
-  SIM_TIME_SECONDS += simDeltaDays * 86400;
+  SIM_TIME_SECONDS += simDeltaDays;
 }

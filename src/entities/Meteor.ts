@@ -3,7 +3,7 @@ import {Application, Graphics} from "pixi.js";
 import {AU_IN_KM, MIN_PIXEL_RADIUS, POSITION_SCALE, RADIUS_SCALE, SIM_DAYS_PER_REAL_SECOND} from "../config/scales";
 import {Vector} from "../utils/Vector";
 import {PLANETS} from "../data/bodies";
-import {GxMExAU, SECONDS_PER_DAY} from "../utils/constants";
+import {DEBUG_AU, DEBUG_G, DEBUG_ME, MExGperAU3, SECONDS_PER_DAY} from "../utils/constants";
 
 export class Meteor implements UpdatableEntity {
 
@@ -34,7 +34,7 @@ export class Meteor implements UpdatableEntity {
         const mass = body.massEarths;
         const distanceVector = this.position.subtract(body.position);
         const distance = distanceVector.length();
-        const singleAcc = - mass / distance * GxMExAU
+        const singleAcc = - mass / distance / distance * MExGperAU3; // m/s^2
         const singleAccVector = distanceVector.normalized().scale(singleAcc);
         acc = acc.add(singleAccVector)
       }

@@ -74,9 +74,8 @@ export const SolarSystemPanel = () => {
     // Per-tick update (simulation logic placeholder)
     const tick = (ticker: { deltaMS: number }) => {
       if (disposed) return;
-      const realDtSeconds = ticker.deltaMS / 1000;
-      const simDtDays = realDtSeconds * SIM_DAYS_PER_REAL_SECOND; // scale real time -> simulation days
-      advanceSimulation(simDtDays);
+      const realDtSeconds = ticker.deltaMS / 1000 * 86400 * SIM_DAYS_PER_REAL_SECOND; // scale real time -> simulation days
+      advanceSimulation(realDtSeconds);
       for (const e of ENTITIES) {
         if (!(e instanceof (Orbit as any))) e.update(realDtSeconds);
       }

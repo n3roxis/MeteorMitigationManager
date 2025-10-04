@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Application, Container } from 'pixi.js';
 import {ORBITS} from "../../../solar_system/data/orbits";
-import {EARTH_MOON_BARYCENTER, MOON, PLANETS, SUN} from "../../../solar_system/data/bodies";
+import {EARTH_MOON_BARYCENTER, MOON, PLANETS, SUN, EARTH} from "../../../solar_system/data/bodies";
 import {METEORS} from "../../../solar_system/data/meteors";
 import {GlowEffect} from "../../../solar_system/entities/GlowEffect";
 import {clearEntities, ENTITIES, registerEntity} from "../../../solar_system/state/entities";
@@ -9,6 +9,11 @@ import {advanceSimulation, resetSimulationTime} from "../../../solar_system/stat
 import {POSITION_SCALE, updateScales, getSimDaysPerPhysicsTick, PHYSICS_TICKS_PER_SECOND} from "../../../solar_system/config/scales";
 import {Orbit} from "../../../solar_system/entities/Orbit";
 import { PathPredictor } from "../../../solar_system/entities/PathPredictor";
+import { PlanetLabel } from "../../../solar_system/entities/PlanetLabel";
+import LaunchButton from './LaunchButton';
+import { computeLagrangePoints } from '../../../solar_system/utils/lagrange';
+import { LagrangePoint } from '../../../solar_system/entities/LagrangePoint';
+import { Vector } from '../../../solar_system/utils/Vector';
 
 export const SolarSystemPanel = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -38,6 +43,8 @@ export const SolarSystemPanel = () => {
     let centerY = 0;
     const scene = new Container();
     app.stage.addChild(scene);
+    // Track last entity count to start newly added entities (e.g., projectiles)
+    let lastEntityCount = 0;
   // Camera mode toggle (press 'c' to switch between barycenter and sun)
   let cameraMode: 'barycenter' | 'sun' = 'barycenter';
 
@@ -67,6 +74,28 @@ export const SolarSystemPanel = () => {
         const gfx = p.graphics; if (gfx) scene.addChild(gfx); // reparent
         registerEntity(p);
       }
+      // Planet labels (skip barycenter pseudo-planet)
+      for (const p of planets) {
+        if (p.id === 'earth-moon-bary') continue;
+        const label = new PlanetLabel(`${p.id}-label`, p);
+        label.start(app); const lg = label.graphics; if (lg) scene.addChild(lg);
+        registerEntity(label);
+      }
+      // Lagrange points for Sun-Earth system (use SUN as primary, EARTH as secondary)
+      if (SUN && EARTH) {
+        const sunEarthCompute = () => computeLagrangePoints(SUN.position, EARTH.position, SUN.massEarths, EARTH.massEarths);
+        const color = EARTH.color; // Earth's blue for Sun-Earth L points
+        const size = 3;
+        const addLP = (id: string, getter: () => Vector) => {
+          const lp = new LagrangePoint(id, color, size, getter);
+          lp.start(app); const g = lp.graphics; if (g) scene.addChild(g); registerEntity(lp);
+        };
+        addLP('sun-earth-L1', () => sunEarthCompute().L1);
+        addLP('sun-earth-L2', () => sunEarthCompute().L2);
+        addLP('sun-earth-L3', () => sunEarthCompute().L3);
+        addLP('sun-earth-L4', () => sunEarthCompute().L4);
+        addLP('sun-earth-L5', () => sunEarthCompute().L5);
+      }
       for (const m of meteors) {
         m.start(app);
         const gfx = m.graphics; if (gfx) scene.addChild(gfx); // reparent
@@ -77,10 +106,13 @@ export const SolarSystemPanel = () => {
         registerEntity(predictor);
       }
 
-      // Add Moon body (already defined in bodies.ts)
-      MOON.start(app);
-      const moonGfx = MOON.graphics; if (moonGfx) scene.addChild(moonGfx);
-      registerEntity(MOON);
+  // Add Moon body (already defined in bodies.ts) and its label
+  MOON.start(app);
+  const moonGfx = MOON.graphics; if (moonGfx) scene.addChild(moonGfx);
+  registerEntity(MOON);
+  const moonLabel = new PlanetLabel('moon-label', MOON as any);
+  moonLabel.start(app); const mlg = moonLabel.graphics; if (mlg) scene.addChild(mlg);
+  registerEntity(moonLabel);
 
       resetSimulationTime();
 
@@ -102,6 +134,14 @@ export const SolarSystemPanel = () => {
       advanceSimulation(physicsDtSimDays); // sim time advanced in days
       for (const e of ENTITIES) { if (!(e instanceof (Orbit as any))) e.update(physicsDtSimSeconds); }
       for (const e of ENTITIES) { if (e instanceof (Orbit as any)) e.update(physicsDtSimSeconds); }
+      // Start any entities added after initialization (e.g., new projectiles)
+      if (ENTITIES.length > lastEntityCount) {
+        for (let i = lastEntityCount; i < ENTITIES.length; i++) {
+          const ent: any = ENTITIES[i];
+          if (!ent.graphics && ent.start) { ent.start(app); if (ent.graphics) scene.addChild(ent.graphics); }
+        }
+        lastEntityCount = ENTITIES.length;
+      }
       physicsTicks++;
     };
 
@@ -221,7 +261,7 @@ export const SolarSystemPanel = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
+  return <div ref={containerRef} style={{ width: '100%', height: '100%' }}><LaunchButton /></div>;
 };
 
 export default SolarSystemPanel;

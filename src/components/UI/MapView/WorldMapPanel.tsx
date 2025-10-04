@@ -1,7 +1,8 @@
 import { Application, Assets, Graphics, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
 import WorldMap from './resources/WorldMap.png';
-import { PanView } from './PanView';
+
+import {Viewport} from 'pixi-viewport';
 
 // Placeholder world map panel to build on later
 export const WorldMapPanel: React.FC = () => {
@@ -21,9 +22,23 @@ export const WorldMapPanel: React.FC = () => {
           await app.init({ width: rect.width || 1, height: rect.height || 1, background: 0x111111, antialias: true });
           if (disposed) return;
           el.appendChild(app.canvas);
-        
-          const map = await PanView(app);
-          app.stage.addChild(map);
+
+          const viewport = new Viewport({
+            worldHeight: app.renderer.height,
+            worldWidth: app.renderer.width,
+            passiveWheel: false,
+            events: app.renderer.events
+          });
+          viewport.drag().decelerate().pinch().wheel()
+          viewport.fit();
+
+          
+
+          const tex = await Assets.load(WorldMap);
+          const map = new Sprite(tex);
+          map.anchor.set(0.5,0.5);
+          map.position.set()
+          viewport.addChild(map);
   
           // Resize observer to keep canvas filling the half panel
           const ro = new ResizeObserver(entries => {
@@ -32,18 +47,7 @@ export const WorldMapPanel: React.FC = () => {
                 const { width, height } = entry.contentRect;
                 if (width > 0 && height > 0) {
                   app.renderer.resize(width, height);
-                  const offx = map.x / app.renderer.width;
-                  const offy = map.y / app.renderer.height;
-                  map.width = width;
-                  map.scale.y = map.scale.x;
-                  map.position.set(width * offx+app.renderer.width/2, height * offy+app.renderer.width/2);
-
-                  const finalX = offx * width;
-                  const finalY = offy * height;
-
-                  map.position.set(finalX - (app.renderer.width - map.width) / 2,
-                                  finalY - (app.renderer.height - map.height) / 2+app.renderer.height/4);
-                  //map.position.set((offx-map.width)/2,(offy- map.height)/2);
+                  viewport.resize(width,height);
                 }
               }
           });

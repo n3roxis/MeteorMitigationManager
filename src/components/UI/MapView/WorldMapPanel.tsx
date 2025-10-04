@@ -3,6 +3,7 @@ import { Application, Assets, Color, DEG_TO_RAD, Graphics, Sprite } from 'pixi.j
 import React, { useEffect, useRef } from 'react';
 import { toMercator } from '../../../Logic/Utils/TranslationInterface';
 import WorldMap from './resources/WorldMap.png';
+import { Vector } from '../../../solar_system/utils/Vector';
 
 // Placeholder world map panel to build on later
 export const WorldMapPanel: React.FC = () => {
@@ -23,6 +24,7 @@ export const WorldMapPanel: React.FC = () => {
           if (disposed) return;
           el.appendChild(app.canvas);
 
+          const offset = new Vector(rect.width/2,rect.height/2,0);
           const viewport = new Viewport({
             screenWidth: rect.width,
             screenHeight: rect.height,

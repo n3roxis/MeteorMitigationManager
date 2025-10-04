@@ -1,10 +1,19 @@
 import { Viewport } from 'pixi-viewport';
 import { Application, Assets, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
-import { toMercator } from '../../../Logic/Utils/TranslationInterface';
+import { DataBroker, toMercator } from '../../../Logic/Utils/TranslationInterface';
 import { Vector } from '../../../solar_system/utils/Vector';
+import { ImpactStack } from '../../Graphics/Impact/ImpactStack';
 import { Shockwave } from '../../Graphics/Impact/Shockwave';
 import WorldMap from './resources/WorldMap.png';
+
+
+const waves = [
+            Shockwave.createAir(Vector.zero(),0),
+            Shockwave.createSeis(Vector.zero(),0),
+            Shockwave.createTherm(Vector.zero(),0)
+          ]
+const stack = new ImpactStack("prediction",Vector.zero(),waves);
 
 // Placeholder world map panel to build on later
 export const WorldMapPanel: React.FC = () => {
@@ -25,7 +34,6 @@ export const WorldMapPanel: React.FC = () => {
           if (disposed) return;
           el.appendChild(app.canvas);
 
-          const offset = new Vector(rect.width/2,rect.height/2,0);
           const viewport = new Viewport({
             screenWidth: rect.width,
             screenHeight: rect.height,
@@ -40,19 +48,25 @@ export const WorldMapPanel: React.FC = () => {
 
           // activate plugins
           viewport.drag().pinch().wheel().decelerate();
+
+          // setup map background
           const tex = await Assets.load(WorldMap);
           const map = new Sprite(tex);
           viewport.addChild(map);
           map.anchor.set(0.5,0.5);
           map.position.set(rect.width/2,rect.height/2);
+        
+          // setup impact Stack
           
-          const cord = toMercator(2,0);
-          const test = new Shockwave("test",new Vector(cord.x,cord.y,0),offset,300,1);
-          const gfx = test.graphics; if (gfx) viewport.addChild(gfx);
-
 
           app.ticker.add((tick)=>{
-            test.update(tick.deltaTime);
+            const impact = DataBroker.instance.getImpact()
+            if(impact){
+              const cord = toMercator(impact.longLat.lamb,impact.longLat.phi);
+              stack.move(new Vector(cord.x,cord.y,0));
+              //TODO: Astrid stuff
+              stack.update(tick.deltaTime);
+            }
           })
   
           viewport.fit();

@@ -1,9 +1,10 @@
 import { Viewport } from 'pixi-viewport';
-import { Application, Assets, Color, DEG_TO_RAD, Graphics, Sprite } from 'pixi.js';
+import { Application, Assets, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
 import { toMercator } from '../../../Logic/Utils/TranslationInterface';
-import WorldMap from './resources/WorldMap.png';
 import { Vector } from '../../../solar_system/utils/Vector';
+import { Shockwave } from '../../Graphics/Impact/Shockwave';
+import WorldMap from './resources/WorldMap.png';
 
 // Placeholder world map panel to build on later
 export const WorldMapPanel: React.FC = () => {
@@ -45,12 +46,14 @@ export const WorldMapPanel: React.FC = () => {
           map.anchor.set(0.5,0.5);
           map.position.set(rect.width/2,rect.height/2);
           
-          const cord =  toMercator(DEG_TO_RAD*0,DEG_TO_RAD*51.508742);
-          console.log(cord);
-          const container = new Graphics();
-          container.circle(cord.x,cord.y,2).fill(new Color('red'))
-          container.position.set(rect.width/2,rect.height/2);
-          viewport.addChild(container);
+          const cord = toMercator(2,0);
+          const test = new Shockwave("test",new Vector(cord.x,cord.y,0),offset,300,1);
+          const gfx = test.graphics; if (gfx) viewport.addChild(gfx);
+
+
+          app.ticker.add((tick)=>{
+            test.update(tick.deltaTime);
+          })
   
           viewport.fit();
           // Resize observer to keep canvas filling the half panel

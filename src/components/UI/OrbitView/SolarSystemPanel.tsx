@@ -1,15 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { Application, Container } from 'pixi.js';
-import { PLANETS, BODIES, MOON, EARTH_MOON_BARYCENTER, SUN } from '../solar_system/data/bodies';
-import { ORBITS } from '../solar_system/data/orbits';
-import { updateScales, POSITION_SCALE, SIM_DAYS_PER_REAL_SECOND } from '../solar_system/config/scales';
-import { advanceSimulation, resetSimulationTime } from '../solar_system/state/simulation';
-import { ENTITIES, registerEntity, clearEntities } from '../solar_system/state/entities';
-import { MOON_ORBIT } from '../solar_system/data/orbits';
-import { Moon } from '../solar_system/entities/Moon';
-import { Orbit } from '../solar_system/entities/Orbit';
-import { GlowEffect } from '../solar_system/entities/GlowEffect';
-import {METEORS} from "../solar_system/data/meteors";
+import {ORBITS} from "../../../solar_system/data/orbits";
+import {EARTH_MOON_BARYCENTER, MOON, PLANETS, SUN} from "../../../solar_system/data/bodies";
+import {METEORS} from "../../../solar_system/data/meteors";
+import {GlowEffect} from "../../../solar_system/entities/GlowEffect";
+import {clearEntities, ENTITIES, registerEntity} from "../../../solar_system/state/entities";
+import {advanceSimulation, resetSimulationTime} from "../../../solar_system/state/simulation";
+import {POSITION_SCALE, SIM_DAYS_PER_REAL_SECOND, updateScales} from "../../../solar_system/config/scales";
+import {Orbit} from "../../../solar_system/entities/Orbit";
 
 export const SolarSystemPanel = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);

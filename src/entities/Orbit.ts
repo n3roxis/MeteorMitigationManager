@@ -1,5 +1,6 @@
 import { Application, Graphics } from 'pixi.js';
 import { UpdatableEntity } from './Entity';
+import { Planet } from './Planet';
 import { POSITION_SCALE } from '../config/scales';
 import { Vector } from '../utils/Vector';
 import { sampleOrbit } from '../utils/orbitalMath';
@@ -17,6 +18,7 @@ export class Orbit implements UpdatableEntity {
   longitudeAscendingNodeDeg: number;
   argumentOfPeriapsisDeg: number;
   private gfx: Graphics | null = null;
+  parent?: Planet; // Optional parent body for relative orbit (e.g., Moon around Earth)
 
   constructor(
     id: string,
@@ -28,7 +30,8 @@ export class Orbit implements UpdatableEntity {
     lineWidth = 1,
     inclinationDeg = 0,
     longitudeAscendingNodeDeg = 0,
-    argumentOfPeriapsisDeg = 0
+    argumentOfPeriapsisDeg = 0,
+    parent?: Planet
   ) {
   this.id = id;
   this.semiMajorAxis = semiMajorAxis;
@@ -40,6 +43,7 @@ export class Orbit implements UpdatableEntity {
     this.inclinationDeg = inclinationDeg;
     this.longitudeAscendingNodeDeg = longitudeAscendingNodeDeg;
     this.argumentOfPeriapsisDeg = argumentOfPeriapsisDeg;
+    this.parent = parent;
   }
 
   start(app: Application) {
@@ -51,22 +55,30 @@ export class Orbit implements UpdatableEntity {
     if (!this.gfx) return;
     const g = this.gfx;
     const { semiMajorAxis, eccentricity, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg } = this;
+  // Fixed segment count for simplicity & consistency at high zoom
+  const apparentRadiusPx = semiMajorAxis * POSITION_SCALE;
     const pts = sampleOrbit(
       semiMajorAxis,
       eccentricity,
       inclinationDeg,
       longitudeAscendingNodeDeg,
       argumentOfPeriapsisDeg,
-      256
+      1024
     );
     g.clear();
+    // Parent offset (if orbiting a moving body)
+    const baseX = this.parent ? this.parent.position.x : 0;
+    const baseY = this.parent ? this.parent.position.y : 0;
+
     for (let i = 0; i < pts.length; i++) {
       const [x, y] = pts[i];
-      const sx = x * POSITION_SCALE;
-      const sy = y * POSITION_SCALE;
+      const sx = (baseX + x) * POSITION_SCALE;
+      const sy = (baseY + y) * POSITION_SCALE;
       if (i === 0) g.moveTo(sx, sy); else g.lineTo(sx, sy);
     }
-    g.stroke({ width: this.lineWidth, color: this.color, alpha: this.alpha });
+    // Adaptive stroke: tiny orbits can become subpixel; boost line width if projected semi-major axis < 2px
+  const adaptiveWidth = apparentRadiusPx < 2 ? Math.max(this.lineWidth, 2) : this.lineWidth;
+    g.stroke({ width: adaptiveWidth, color: this.color, alpha: this.alpha });
   }
 
   destroy(): void {

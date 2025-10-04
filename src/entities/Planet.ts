@@ -1,70 +1,95 @@
 import { Application, Graphics } from 'pixi.js';
 import { UpdatableEntity } from './Entity';
-import { Orbit } from './Orbit';
-import { RADIUS_SCALE, MIN_PIXEL_RADIUS, POSITION_SCALE, AU_IN_KM } from '../config/scales';
 import { Vector } from '../utils/Vector';
-import { SIM_TIME_SECONDS } from '../state/simulation';
+import { POSITION_SCALE, RADIUS_SCALE, MIN_PIXEL_RADIUS, AU_IN_KM } from '../config/scales';
 import { meanAnomaly, solveEccentricAnomaly, orbitalPlanePosition, rotateOrbitalToXYZ } from '../utils/orbitalMath';
+import { SIM_TIME_SECONDS } from '../state/simulation';
+import { Orbit } from './Orbit';
 
 export class Planet implements UpdatableEntity {
   id: string;
-  position: Vector = new Vector(0,0,0);
-  radiusKm: number; // radius in kilometers
-  massEarths: number; // mass in Earth masses
+  position: Vector = new Vector(0, 0, 0);
+  radiusKm: number;
+  massEarths: number;
   color: number;
-  orbit?: Orbit;
-  phase: number;
+  orbit?: Orbit; // primary orbital path (around parent or star)
+  orbitPhase: number; // initial phase offset (0..1)
+  parent?: Planet; // parent body for hierarchical systems
+  wobbleOrbit?: Orbit; // optional small orbit for barycentric wobble
   private gfx: Graphics | null = null;
-  // Removed internal time accumulator; now uses global SIM_TIME_SECONDS
 
-  constructor(id: string, radiusKm: number, massEarths: number, color: number, orbit?: Orbit, phase: number = 0) {
+  constructor(
+    id: string,
+    radiusKm: number,
+    massEarths: number,
+    color: number,
+    orbit?: Orbit,
+    orbitPhase = 0,
+    parent?: Planet,
+    wobbleOrbit?: Orbit
+  ) {
     this.id = id;
     this.radiusKm = radiusKm;
     this.massEarths = massEarths;
     this.color = color;
     this.orbit = orbit;
-    this.phase = phase;
+    this.orbitPhase = orbitPhase;
+    this.parent = parent;
+    this.wobbleOrbit = wobbleOrbit;
   }
 
-  start(app: Application) {
+  start(app: Application): void {
     this.gfx = new Graphics();
     app.stage.addChild(this.gfx);
   }
 
-  update(dt: number) {
+  update(dt: number): void { // dt unused; time from global time source
+    let baseX = 0, baseY = 0, baseZ = 0;
+    if (this.parent) {
+      baseX = this.parent.position.x;
+      baseY = this.parent.position.y;
+      baseZ = this.parent.position.z;
+    }
+
+    // Primary orbital motion
     if (this.orbit) {
       const { semiMajorAxis, eccentricity, periodDays, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg } = this.orbit as any;
       const periodSec = periodDays * 86400;
-      const M = meanAnomaly(SIM_TIME_SECONDS, this.phase, periodSec);
+      const M = meanAnomaly(SIM_TIME_SECONDS, this.orbitPhase, periodSec);
       const E = solveEccentricAnomaly(M, eccentricity);
       const [xPrime, yPrime] = orbitalPlanePosition(semiMajorAxis, eccentricity, E);
-      const [x, y, z] = rotateOrbitalToXYZ(xPrime, yPrime, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg);
-      this.position.x = x;
-      this.position.y = y;
-      this.position.z = z;
-    } else {
-      this.position.x = 0;
-      this.position.y = 0;
-      this.position.z = 0;
+      const [rx, ry, rz] = rotateOrbitalToXYZ(xPrime, yPrime, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg);
+      baseX += rx; baseY += ry; baseZ += rz;
     }
 
-    // Redraw radius each update
+    // Optional wobble orbit (barycentric wobble)
+    if (this.wobbleOrbit) {
+      const { semiMajorAxis, eccentricity, periodDays, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg } = this.wobbleOrbit as any;
+      const periodSec = periodDays * 86400;
+      const M = meanAnomaly(SIM_TIME_SECONDS, 0, periodSec);
+      const E = solveEccentricAnomaly(M, eccentricity);
+      const [xPrime, yPrime] = orbitalPlanePosition(semiMajorAxis, eccentricity, E);
+      const [wx, wy, wz] = rotateOrbitalToXYZ(xPrime, yPrime, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg);
+      baseX += wx; baseY += wy; baseZ += wz;
+    }
+
+    this.position.x = baseX;
+    this.position.y = baseY;
+    this.position.z = baseZ;
+
     if (this.gfx) {
-  // Convert physical radius (km) to AU, scale to pixels, apply exaggeration factor
-  const pixelPhysical = (this.radiusKm / AU_IN_KM) * POSITION_SCALE;
-  const pr = Math.max(pixelPhysical * RADIUS_SCALE, MIN_PIXEL_RADIUS);
+      const pixelPhysical = (this.radiusKm / AU_IN_KM) * POSITION_SCALE;
+      const pr = Math.max(pixelPhysical * RADIUS_SCALE, MIN_PIXEL_RADIUS);
       this.gfx.clear();
       this.gfx.circle(0, 0, pr).fill(this.color);
-      // Set position here based on scaled orbital coordinates; parent container will be centered
       this.gfx.position.set(this.position.x * POSITION_SCALE, this.position.y * POSITION_SCALE);
     }
   }
 
-
-  get graphics(): Graphics | null { return this.gfx; }
-
-  destroy() {
+  destroy(): void {
     this.gfx?.destroy();
     this.gfx = null;
   }
+
+  get graphics(): Graphics | null { return this.gfx; }
 }

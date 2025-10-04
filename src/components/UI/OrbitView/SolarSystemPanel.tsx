@@ -120,9 +120,7 @@ export const SolarSystemPanel = () => {
         }
         // Camera update after physics
         if (cameraMode === 'sun' && SUN) {
-          const tx = SUN.position.x * POSITION_SCALE;
-          const ty = SUN.position.y * POSITION_SCALE;
-          scene.position.set(centerX - tx, centerY - ty);
+          scene.position.set(centerX, centerY);
         } else if (EARTH_MOON_BARYCENTER) {
           const tx = EARTH_MOON_BARYCENTER.position.x * POSITION_SCALE;
           const ty = EARTH_MOON_BARYCENTER.position.y * POSITION_SCALE;

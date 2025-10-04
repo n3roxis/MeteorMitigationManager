@@ -42,6 +42,7 @@ reports/
 *.local
 *.sass-cache
 *.tgz
+MORETZ_NOTES.md
 
 # Lockfiles (if you decide to standardize on one, remove others from ignore)
 # Uncomment one of these if you want to commit a specific lockfile

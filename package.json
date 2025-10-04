@@ -4,7 +4,8 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "vite"
+    "dev": "vite",
+    "test_orbits": "node --experimental-specifier-resolution=node ./orbit_tester/starter.ts"
   },
   "dependencies": {
     "pixi.js": "^8.2.1",

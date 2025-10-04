@@ -1,6 +1,6 @@
 import {UpdatableEntity} from "./Entity";
 import {Application, Graphics} from "pixi.js";
-import {MIN_PIXEL_RADIUS, POSITION_SCALE, SIM_DAYS_PER_REAL_SECOND} from "../config/scales";
+import {AU_IN_KM, MIN_PIXEL_RADIUS, POSITION_SCALE, RADIUS_SCALE, SIM_DAYS_PER_REAL_SECOND} from "../config/scales";
 import {Vector} from "../utils/Vector";
 import {PLANETS} from "../data/bodies";
 import {GxMExAU, SECONDS_PER_DAY} from "../utils/constants";
@@ -53,8 +53,10 @@ export class Meteor implements UpdatableEntity {
 
     // Redraw radius each update
     if (this.gfx) {
+      const pixelPhysical = (10 / AU_IN_KM) * POSITION_SCALE;
+      const pr = Math.max(pixelPhysical * RADIUS_SCALE, MIN_PIXEL_RADIUS);
       this.gfx.clear();
-      this.gfx.circle(0, 0, MIN_PIXEL_RADIUS*5).fill(this.color);
+      this.gfx.circle(0, 0, pr).fill(this.color);
       // Set position here based on scaled orbital coordinates; parent container will be centered
       this.gfx.position.set(this.position.x * POSITION_SCALE, this.position.y * POSITION_SCALE);
     }

@@ -39,9 +39,6 @@ export class Meteor implements UpdatableEntity {
         acc = acc.add(singleAccVector)
       }
 
-      acc = acc.scale((SIM_DAYS_PER_REAL_SECOND * SECONDS_PER_DAY) ** -2);
-      acc = acc.scale(15);
-
       this.velocity = this.velocity.add(acc.scale(dt));
       this.position = this.position.add(this.velocity.scale(dt));
     }

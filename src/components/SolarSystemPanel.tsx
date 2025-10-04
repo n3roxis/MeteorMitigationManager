@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Application, Container } from 'pixi.js';
 import { PLANETS, BODIES, MOON, EARTH_MOON_BARYCENTER, SUN } from '../data/bodies';
 import { ORBITS } from '../data/orbits';
-import { updateScales, POSITION_SCALE } from '../config/scales';
+import { updateScales, POSITION_SCALE, SIM_DAYS_PER_REAL_SECOND } from '../config/scales';
 import { advanceSimulation, resetSimulationTime } from '../state/simulation';
 import { ENTITIES, registerEntity, clearEntities } from '../state/entities';
 import { MOON_ORBIT } from '../data/orbits';
@@ -74,18 +74,15 @@ export const SolarSystemPanel = () => {
     // Per-tick update (simulation logic placeholder)
     const tick = (ticker: { deltaMS: number }) => {
       if (disposed) return;
-      const dt = ticker.deltaMS / 1000;
-      advanceSimulation(dt);
-      // Two-phase update to avoid orbit graphics "lagging" one frame behind moving parents:
-      // 1. Update all non-orbit bodies (planets, moons, barycenter) so their positions are current.
-      // 2. Update orbit renderers that depend on parent positions (orbits sample parent.position each frame).
+      const realDtSeconds = ticker.deltaMS / 1000;
+      const simDtDays = realDtSeconds * SIM_DAYS_PER_REAL_SECOND; // scale real time -> simulation days
+      advanceSimulation(simDtDays);
       for (const e of ENTITIES) {
-        if (!(e instanceof (Orbit as any))) e.update(dt);
+        if (!(e instanceof (Orbit as any))) e.update(realDtSeconds);
       }
       for (const e of ENTITIES) {
-        if (e instanceof (Orbit as any)) e.update(dt);
+        if (e instanceof (Orbit as any)) e.update(realDtSeconds);
       }
-      // Center camera on barycenter always
       if (EARTH_MOON_BARYCENTER) {
         const tx = EARTH_MOON_BARYCENTER.position.x * POSITION_SCALE;
         const ty = EARTH_MOON_BARYCENTER.position.y * POSITION_SCALE;

@@ -11,6 +11,12 @@ export const MIN_PIXEL_RADIUS = 2; // floor for visibility
 // Sim time scale: simulated days per real second (default ~30 ≈ 1 month/sec)
 export let SIM_DAYS_PER_REAL_SECOND = 10;
 
+// Fixed physics rate (ticks per real second). Predictor and meteor should use same dt derived from this.
+export const PHYSICS_TICKS_PER_SECOND = 100; // 100Hz physics
+export function getSimDaysPerPhysicsTick(): number {
+  return SIM_DAYS_PER_REAL_SECOND / PHYSICS_TICKS_PER_SECOND;
+}
+
 // Adjust time speed
 export function setSimulationSpeed(daysPerSecond: number) {
   SIM_DAYS_PER_REAL_SECOND = Math.max(0, daysPerSecond);

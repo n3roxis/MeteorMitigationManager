@@ -3,11 +3,11 @@ import { UpdatableEntity } from './Entity';
 import { Planet } from './Planet';
 import { POSITION_SCALE } from '../config/scales';
 import { Vector } from '../utils/Vector';
-import { sampleOrbit } from '../utils/orbitalMath';
+import { sampleOrbitInto } from '../utils/orbitalMath';
 
 export class Orbit implements UpdatableEntity {
     id: string;
-    position: Vector = new Vector(0,0,0);
+    position: Vector = new Vector(0, 0, 0);
     semiMajorAxis: number;
     eccentricity: number;
     periodDays: number;
@@ -18,7 +18,13 @@ export class Orbit implements UpdatableEntity {
     longitudeAscendingNodeDeg: number;
     argumentOfPeriapsisDeg: number;
     private gfx: Graphics | null = null;
-    parent?: Planet; // Optional parent body for relative orbit (e.g., Moon around Earth)
+    private points: Float32Array | null = null;
+    private segments = 1024;
+    private dirty = true;
+    private lastScale = POSITION_SCALE;
+    private lastParentX = NaN;
+    private lastParentY = NaN;
+    parent?: Planet;
 
     constructor(
         id: string,
@@ -47,38 +53,70 @@ export class Orbit implements UpdatableEntity {
     }
 
     start(app: Application) {
+        if (this.gfx) return;
         this.gfx = new Graphics();
         app.stage.addChild(this.gfx);
+        this.points = new Float32Array((this.segments + 1) * 2);
+        this.resample();
+        this.redraw();
     }
 
-    update(dt: number): void { // dt retained for interface symmetry (unused)
-        if (!this.gfx) return;
-        const g = this.gfx;
-        const { semiMajorAxis, eccentricity, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg } = this;
-        // Fixed segment count for simplicity & consistency at high zoom
-        const apparentRadiusPx = semiMajorAxis * POSITION_SCALE;
-        const pts = sampleOrbit(
-            semiMajorAxis,
-            eccentricity,
-            inclinationDeg,
-            longitudeAscendingNodeDeg,
-            argumentOfPeriapsisDeg,
-            1024
-        );
-        g.clear();
-        // Parent offset (if orbiting a moving body)
-        const baseX = this.parent ? this.parent.position.x : 0;
-        const baseY = this.parent ? this.parent.position.y : 0;
+    markDirty() { this.dirty = true; }
 
-        for (let i = 0; i < pts.length; i++) {
-            const [x, y] = pts[i];
-            const sx = (baseX + x) * POSITION_SCALE;
-            const sy = (baseY + y) * POSITION_SCALE;
-            if (i === 0) g.moveTo(sx, sy); else g.lineTo(sx, sy);
+    private resample() {
+        if (!this.points) return;
+        sampleOrbitInto(
+            this.semiMajorAxis,
+            this.eccentricity,
+            this.inclinationDeg,
+            this.longitudeAscendingNodeDeg,
+            this.argumentOfPeriapsisDeg,
+            this.segments,
+            this.points
+        );
+    }
+
+    private redraw() {
+        if (!this.gfx || !this.points) return;
+        const g = this.gfx;
+        g.clear();
+        // Draw in pixel space directly (no Graphics scale). This avoids extremely tiny local stroke
+        // widths for very small orbits (Moon, wobble) that were being quantized away at high zoom.
+        const len = (this.segments + 1) * 2;
+        for (let o = 0; o < len; o += 2) {
+            const xPx = this.points[o] * POSITION_SCALE;
+            const yPx = this.points[o + 1] * POSITION_SCALE;
+            if (o === 0) g.moveTo(xPx, yPx); else g.lineTo(xPx, yPx);
         }
-        // Adaptive stroke: tiny orbits can become subpixel; boost line width if projected semi-major axis < 2px
-        const adaptiveWidth = apparentRadiusPx < 2 ? Math.max(this.lineWidth, 2) : this.lineWidth;
-        g.stroke({ width: adaptiveWidth, color: this.color, alpha: this.alpha });
+        g.stroke({ width: this.lineWidth, color: this.color, alpha: this.alpha });
+        this.dirty = false;
+    }
+
+    private applyTransform(force = false) {
+        if (!this.gfx) return;
+        const scaleChanged = POSITION_SCALE !== this.lastScale;
+        if (scaleChanged) {
+            this.lastScale = POSITION_SCALE;
+            // Rebuild pixel geometry on scale change
+            this.redraw();
+        }
+        const px = this.parent ? this.parent.position.x : 0;
+        const py = this.parent ? this.parent.position.y : 0;
+        if (force || px !== this.lastParentX || py !== this.lastParentY || scaleChanged) {
+            this.gfx.position.set(px * POSITION_SCALE, py * POSITION_SCALE);
+            // No scaling of the Graphics itself; geometry already in pixel space.
+            this.lastParentX = px;
+            this.lastParentY = py;
+        }
+    }
+
+    update(): void {
+        if (!this.gfx) return;
+        if (this.dirty) {
+            this.resample();
+            this.redraw();
+        }
+        this.applyTransform();
     }
 
     destroy(): void {

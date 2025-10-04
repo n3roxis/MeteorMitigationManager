@@ -2,8 +2,8 @@ import { Application, Graphics } from 'pixi.js';
 import { UpdatableEntity } from './Entity';
 import { Vector } from '../utils/Vector';
 import { POSITION_SCALE, RADIUS_SCALE, MIN_PIXEL_RADIUS, AU_IN_KM } from '../config/scales';
-import { meanAnomaly, solveEccentricAnomaly, orbitalPlanePosition, rotateOrbitalToXYZ } from '../utils/orbitalMath';
-import { SIM_TIME_SECONDS } from '../state/simulation';
+import { orbitalPositionAtTime } from '../utils/orbitalMath';
+import { SIM_TIME_DAYS } from '../state/simulation';
 import { Orbit } from './Orbit';
 
 export class Planet implements UpdatableEntity {
@@ -43,7 +43,7 @@ export class Planet implements UpdatableEntity {
     app.stage.addChild(this.gfx);
   }
 
-  update(dt: number): void { // dt unused; time from global time source
+  update(): void { // time from global time source
     let baseX = 0, baseY = 0, baseZ = 0;
     if (this.parent) {
       baseX = this.parent.position.x;
@@ -53,23 +53,29 @@ export class Planet implements UpdatableEntity {
 
     // Primary orbital motion
     if (this.orbit) {
-      const { semiMajorAxis, eccentricity, periodDays, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg } = this.orbit as any;
-      const periodSec = periodDays * 86400;
-      const M = meanAnomaly(SIM_TIME_SECONDS, this.orbitPhase, periodSec);
-      const E = solveEccentricAnomaly(M, eccentricity);
-      const [xPrime, yPrime] = orbitalPlanePosition(semiMajorAxis, eccentricity, E);
-      const [rx, ry, rz] = rotateOrbitalToXYZ(xPrime, yPrime, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg);
+      const o: any = this.orbit;
+      const [rx, ry, rz] = orbitalPositionAtTime({
+        semiMajorAxis: o.semiMajorAxis,
+        eccentricity: o.eccentricity,
+        periodDays: o.periodDays,
+        inclinationDeg: o.inclinationDeg,
+        longitudeAscendingNodeDeg: o.longitudeAscendingNodeDeg,
+        argumentOfPeriapsisDeg: o.argumentOfPeriapsisDeg
+      }, this.orbitPhase, SIM_TIME_DAYS * 86400);
       baseX += rx; baseY += ry; baseZ += rz;
     }
 
     // Optional wobble orbit (barycentric wobble)
     if (this.wobbleOrbit) {
-      const { semiMajorAxis, eccentricity, periodDays, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg } = this.wobbleOrbit as any;
-      const periodSec = periodDays * 86400;
-      const M = meanAnomaly(SIM_TIME_SECONDS, 0, periodSec);
-      const E = solveEccentricAnomaly(M, eccentricity);
-      const [xPrime, yPrime] = orbitalPlanePosition(semiMajorAxis, eccentricity, E);
-      const [wx, wy, wz] = rotateOrbitalToXYZ(xPrime, yPrime, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg);
+      const o: any = this.wobbleOrbit;
+      const [wx, wy, wz] = orbitalPositionAtTime({
+        semiMajorAxis: o.semiMajorAxis,
+        eccentricity: o.eccentricity,
+        periodDays: o.periodDays,
+        inclinationDeg: o.inclinationDeg,
+        longitudeAscendingNodeDeg: o.longitudeAscendingNodeDeg,
+        argumentOfPeriapsisDeg: o.argumentOfPeriapsisDeg
+      }, 0, SIM_TIME_DAYS * 86400);
       baseX += wx; baseY += wy; baseZ += wz;
     }
 

@@ -51,7 +51,7 @@ export function computePathWithTimestamps(
       argumentOfPeriapsisDeg: o.argumentOfPeriapsisDeg,
       orbitPhase: (p as any).orbitPhase || 0
     } as const;
-  });
+  }).filter(m => m.body.massEarths > 300000) as Meta[];
 
   // Zustand (Vector, unverändert nach außen)
   let p = new Vector(initialPos.x, initialPos.y, initialPos.z);

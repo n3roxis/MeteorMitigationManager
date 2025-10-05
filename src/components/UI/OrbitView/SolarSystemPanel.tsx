@@ -224,6 +224,15 @@ export const SolarSystemPanel = () => {
       if (e.key === 'c' || e.key === 'C') {
         cameraMode = cameraMode === 'barycenter' ? 'sun' : 'barycenter';
       }
+      /*
+      TODO mach genau hier weiter:
+      functions auf keys setzen
+      testen wann es lösungen gibt,
+      wie viele es gibt,
+      ob der draw klappt
+      ob die lösungen tatsächlich treffen
+       */
+
     };
     window.addEventListener('keydown', onKey);
 

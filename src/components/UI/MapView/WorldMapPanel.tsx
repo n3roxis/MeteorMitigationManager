@@ -1,15 +1,11 @@
 import { Viewport } from 'pixi-viewport';
-import { Application, Assets, DEG_TO_RAD, Sprite } from 'pixi.js';
+import { Application, Assets, RAD_TO_DEG, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
 import { calculateImpactRadii } from '../../../Logic/formulas';
 import '../../../Logic/formulas.test';
 import { testing_impact } from '../../../Logic/formulas.test';
-<<<<<<< Updated upstream
-import { toMercator } from '../../../Logic/Utils/TranslationInterface';
-=======
 import { GetPopulationinArea } from '../../../Logic/population';
 import { RadiusType, toMercator } from '../../../Logic/Utils/TranslationInterface';
->>>>>>> Stashed changes
 import { Vector } from '../../../solar_system/utils/Vector';
 import { ImpactStack } from '../../Graphics/Impact/ImpactStack';
 import DensityMap from './resources/DensityMap.png';
@@ -82,14 +78,9 @@ export const WorldMapPanel: React.FC = () => {
             //const impact = DataBroker.instance.getImpact()
             const impact = testing_impact;
             if(impact){
-<<<<<<< Updated upstream
-              stack.applyList(calculateImpactRadii(impact));
-              const cord = toMercator(DEG_TO_RAD*impact.longLat.lamb,DEG_TO_RAD*impact.longLat.phi);
-=======
               const radii = calculateImpactRadii(impact)
               stack.applyList(radii);
-              const cord = toMercator(impact.longLat.lamb,impact.longLat.phi);
->>>>>>> Stashed changes
+              const cord = toMercator(RAD_TO_DEG* impact.longLat.lamb,RAD_TO_DEG*impact.longLat.phi);
               stack.move(new Vector(cord.x,cord.y,0));
               stack.updateViewPort(viewport);
               stack.update(tick.deltaTime);

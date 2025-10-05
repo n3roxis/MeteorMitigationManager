@@ -11,8 +11,8 @@ export const GetPopulationinArea=(x:number,y:number,radius:number):Array<number>
 
     const population:Array<number>=[];
     if (context) {
-        context.drawImage(image, 0, 0);
-        var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0);
+      var imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 
       let ly=0;
       let my=0;

@@ -17,6 +17,8 @@ import { Vector } from '../../../solar_system/utils/Vector';
 import { processActions } from '../../../solar_system/economy/actions';
 import { economyState } from '../../../solar_system/economy/state';
 import {InterceptPath} from "../../../solar_system/entities/Interceptor/InterceptPath.ts";
+import {SecondsPerDay, SecondsPerMonth} from "../../../solar_system/utils/constants.ts";
+import {Projectile} from "../../../solar_system/entities/Projectile.ts";
 
 
 let interceptor: InterceptPath | undefined = undefined; // TEMPORARY

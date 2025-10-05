@@ -63,7 +63,7 @@ export const WorldMapPanel: React.FC = () => {
           app.ticker.add((tick)=>{
             const impact = DataBroker.instance.getImpact()
             if(impact){
-              const cord = toMercator(impact.longLat.lamb,impact.longLat.phi);
+              const cord = toMercator(impact.longLat.longitude,impact.longLat.latitude);
               stack.move(new Vector(cord.x,cord.y,0));
               //TODO: Astrid stuff
               stack.update(tick.deltaTime);

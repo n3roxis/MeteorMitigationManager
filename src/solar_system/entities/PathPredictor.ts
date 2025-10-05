@@ -5,8 +5,9 @@ import {PLANETS} from '../data/bodies';
 import {orbitalPositionAtTime, gravitationalAccelerationAtPoint} from '../utils/orbitalMath';
 import {POSITION_SCALE, getSimDaysPerPhysicsTick} from '../config/scales';
 import {SIM_TIME_DAYS} from '../state/simulation';
-import {MEarthxGperAU3, RADIUS_OF_EARTH} from '../utils/constants';
+import {DEBUG_ME, MEarthxGperAU3, RADIUS_OF_EARTH} from '../utils/constants';
 import {Vector} from "../utils/Vector.ts";
+import {DataBroker, Impact, vectorToLongLat} from "../../Logic/Utils/TranslationInterface.ts";
 
 /**
  * PathPredictor attaches to a dynamic body (e.g., Meteor) and renders a dashed
@@ -196,7 +197,7 @@ export class PathPredictor implements UpdatableEntity {
     let futureMeteorLoc: Vector | null = null
     let futureAbsSeconds: number = 0
 
-    function checkCollision() {
+    const checkCollision = () => {
 
       if (previousEarthLoc) {
         const E1 = previousEarthLoc
@@ -264,12 +265,26 @@ export class PathPredictor implements UpdatableEntity {
           const collisionA = A1.add(deltaATilde.scale(collisionT!))
 
           const collisionR = collisionA.subtract(collisionE) // Vector pointing from earth center to impact point
-          const velocityImpact = deltaATilde.scale(1 / (T2 - T1))
+          const velocityImpact = deltaATilde.scale(1 / dT) // Scale time from step time to seconds
 
           // Output parameters, dont change
           const velocity = velocityImpact.length()
           const angle = Math.acos(collisionR.normalized().dot(deltaATilde.normalized()))
-          const secondsUntilImpact = startSimSeconds + T1 + collisionT!
+          const timeOfImpact = startSimSeconds + T1 + collisionT!
+          const {longitude, latitude} = vectorToLongLat(collisionR, timeOfImpact)
+          const impact: Impact = {
+            velocity: velocity,
+            angle: angle,
+            mass: this.target.mass * DEBUG_ME,
+            density: 0,
+            longLat: {
+              longitude: longitude,
+              latitude: latitude
+            },
+          }
+          DataBroker.instance.setImpact(impact)
+        } else {
+          DataBroker.instance.setImpact(null)
         }
       }
       previousEarthLoc = futureEarthLoc;

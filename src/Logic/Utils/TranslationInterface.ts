@@ -1,9 +1,15 @@
-import { SCALE } from "./Constants";
+import { RADSCALE, SCALE } from "./Constants";
 
-export const toMercator = (lambda:number,phi:number) =>{
-    let x= SCALE*(lambda - 0);
-    let y = SCALE*Math.log(Math.tan(Math.PI/4-phi/2));
-    return {x,y}
+export const toMercator = (lambda:number,phi:number,rad?:boolean) =>{
+    if(rad){
+        let x= RADSCALE*(lambda - 0);
+        let y = RADSCALE*Math.log(Math.tan(Math.PI/4-phi/2));
+        return {x,y}
+    }else{
+        let x= SCALE*(lambda - 0);
+        let y = SCALE*Math.log(Math.tan(Math.PI/4-phi/2));
+        return {x,y}
+    }
 }
 
 export class Impact{

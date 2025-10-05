@@ -1,5 +1,5 @@
 import { Viewport } from "pixi-viewport";
-import { Application, DEG_TO_RAD } from "pixi.js";
+import { AlphaFilter, Application, Container, DEG_TO_RAD } from "pixi.js";
 import { CRATER_COL, SEIS_COL_MAX, SHOCK_COL, THERM_ACT_COL, THERM_VIS_COL } from "../../../Logic/Utils/Constants";
 import { Radius, RadiusType, toMercator } from "../../../Logic/Utils/TranslationInterface";
 import { UpdatableEntity } from "../../../solar_system/entities/Entity";
@@ -12,6 +12,8 @@ export class ImpactStack implements UpdatableEntity{
     position:Vector
     waves:Shockwave[] = []
     private enabled = false
+    container = new Container()
+    off = Vector.zero;
 
     constructor(id:string,position:Vector,waves:Shockwave[]){
         this.id = id;
@@ -23,13 +25,16 @@ export class ImpactStack implements UpdatableEntity{
         for(const w of this.waves){
             w.start(app);
             w.enabled = false;
-        
         }
+        const opacity = new AlphaFilter();
+        opacity.alpha = 0.7;
+        this.container.filters = [opacity];
     }
     updateViewPort(viewport:Viewport){
         for(const w of this.waves){
-            const gfx = w.graphics; if (gfx) viewport.addChild(gfx);
+            const gfx = w.graphics; if (gfx) this.container.addChild(gfx);
         }
+        viewport.addChild(this.container);
     }
     update(dt: number): void {      
         if(this.enabled){
@@ -66,7 +71,7 @@ export class ImpactStack implements UpdatableEntity{
         }
     }
 
-    applyList(data:Radius[]){
+    applyList(data:Radius[],app:Application){
         this.waves = this.waves.filter((w)=>{
             if(w.type == RadiusType.SEIS){
                 w.destroy()
@@ -83,6 +88,7 @@ export class ImpactStack implements UpdatableEntity{
                 }else{
                     const wave = Shockwave.createThermVis(radius);
                     wave.color = THERM_VIS_COL;
+                    wave.start(app);
                     this.waves.push(wave);
                 }}break;
                 case RadiusType.THERM_ACT:{let item = this.contains(r.type); if (item){
@@ -91,6 +97,7 @@ export class ImpactStack implements UpdatableEntity{
                 }else{
                     const wave = Shockwave.createThermAct(radius);
                     wave.color = THERM_ACT_COL;
+                    wave.start(app);
                     this.waves.push(wave);
                 }}break;
                 case RadiusType.SEIS:{
@@ -98,6 +105,7 @@ export class ImpactStack implements UpdatableEntity{
                     const colorScaled = {color:SEIS_COL_MAX.color,alpha:alpha};
                     const wave = Shockwave.createSeis(radius);
                     wave.color = SEIS_COL_MAX;
+                    wave.start(app);
                     this.waves.push(wave);
                 }break;
                 case RadiusType.CRATER:{let item = this.contains(r.type); if (item){
@@ -106,6 +114,7 @@ export class ImpactStack implements UpdatableEntity{
                 }else{
                     const wave = Shockwave.createCrate(radius);
                     wave.color = CRATER_COL;
+                    wave.start(app);
                     this.waves.push(wave);
                 }}break;
                 case RadiusType.SHOCK:{let item = this.contains(r.type); if (item){
@@ -114,6 +123,7 @@ export class ImpactStack implements UpdatableEntity{
                 }else{
                     const wave = Shockwave.createShock(radius);
                     wave.color = SHOCK_COL;
+                    wave.start(app);
                     this.waves.push(wave);
                 }}break;
             }
@@ -140,7 +150,7 @@ export class ImpactStack implements UpdatableEntity{
 
     convertRadius(a:{long:number,lat:number},b:{long:number,lat:number}){
         const aproj = toMercator(DEG_TO_RAD*a.long,DEG_TO_RAD*a.lat);
-        const bproj = toMercator(DEG_TO_RAD*b.long,DEG_TO_RAD*b.lat);
+        const bproj = toMercator(DEG_TO_RAD*b.long,DEG_TO_RAD*b.lat,true);
         return this.getDistance(aproj,bproj);
     }
     getDistance(a:{x:number,y:number},b:{x:number,y:number}){

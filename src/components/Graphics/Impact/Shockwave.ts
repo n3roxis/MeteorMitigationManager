@@ -24,8 +24,6 @@ export class Shockwave implements UpdatableEntity{
         this.radius = radius;
         this.gfx = new Graphics();
     }
-    
-    
 
     start(app: Application): void {
         this.off = new Vector(app.renderer.width/2,app.renderer.height/2,0);
@@ -41,16 +39,11 @@ export class Shockwave implements UpdatableEntity{
     }
     update(dt:number){
         if(this.enabled){
-            const perc = Math.min(this.cT / this.period,1);
-            if (this.animate){
-                if(this.cT < this.period)this.cT = this.cT + (2*dt/(100+(perc*100)));
-            }
-            const currentRadius = perc * this.radius;
+            const currentRadius = this.radius;
             if(this.gfx){
                 this.gfx.clear();
                 const circ = this.gfx.circle(this.position.x, this.position.y, this.animate ? currentRadius : this.radius);
                 circ.fill(this.color);
-                
                 this.gfx.position.set(this.off.x, this.off.y);
             }
         }

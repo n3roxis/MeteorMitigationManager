@@ -1,10 +1,9 @@
 import { Viewport } from 'pixi-viewport';
-import { Application, Assets, RAD_TO_DEG, Sprite } from 'pixi.js';
+import { Application, Assets, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
 import { calculateImpactRadii } from '../../../Logic/formulas';
 import '../../../Logic/formulas.test';
 import { testing_impact } from '../../../Logic/formulas.test';
-import { GetPopulationinArea } from '../../../Logic/population';
 import { RadiusType, toMercator } from '../../../Logic/Utils/TranslationInterface';
 import { Vector } from '../../../solar_system/utils/Vector';
 import { ImpactStack } from '../../Graphics/Impact/ImpactStack';
@@ -69,28 +68,26 @@ export const WorldMapPanel: React.FC = () => {
         
           // setup impact stack (layers for impact visualization)
           const stack = new ImpactStack('impact-stack', new Vector(0,0,0), []);
-          stack.start(app as any);
+          stack.start(app);
           stack.updateViewPort(viewport);
           viewport.fit(true);
-          
 
           app.ticker.add((tick)=>{
             //const impact = DataBroker.instance.getImpact()
             const impact = testing_impact;
             if(impact){
               const radii = calculateImpactRadii(impact)
-              stack.applyList(radii);
-              const cord = toMercator(RAD_TO_DEG* impact.longLat.lamb,RAD_TO_DEG*impact.longLat.phi);
+              stack.applyList(radii,app);
+              //const cord = toMercator(RAD_TO_DEG* impact.longLat.lamb,RAD_TO_DEG*impact.longLat.phi);
+              const cord = toMercator(0,0);
               stack.move(new Vector(cord.x,cord.y,0));
               stack.updateViewPort(viewport);
               stack.update(tick.deltaTime);
-
               const rad = stack.waves.find((w)=>{if (w.type == RadiusType.THERM_ACT){return w}})?.radius;
               if(rad){
-                const dead = GetPopulationinArea(cord.x,cord.y,rad);
+                //const dead = GetPopulationinArea(cord.x,cord.y,rad);
                 //console.log(dead);
               }
-                
             }else{
               
             }
@@ -106,7 +103,7 @@ export const WorldMapPanel: React.FC = () => {
                   viewport.resize(width,height);
                   viewport.resize(width,height);
                   viewport.clampZoom({
-                    maxScale:5,
+                    maxScale:100,
                     minScale:0.25,
                   })
                   viewport.moveCenter(width/2,height/2);

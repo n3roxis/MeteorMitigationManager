@@ -1,11 +1,11 @@
-import { Application, Graphics } from 'pixi.js';
-import { UpdatableEntity } from './Entity';
-import { Meteor } from './Meteor';
-import { PLANETS } from '../data/bodies';
-import { orbitalPositionAtTime, gravitationalAccelerationAtPoint } from '../utils/orbitalMath';
-import { POSITION_SCALE, getSimDaysPerPhysicsTick } from '../config/scales';
-import { SIM_TIME_DAYS } from '../state/simulation';
-import { MExGperAU3 } from '../utils/constants';
+import {Application, Graphics} from 'pixi.js';
+import {UpdatableEntity} from './Entity';
+import {Meteor} from './Meteor';
+import {PLANETS} from '../data/bodies';
+import {orbitalPositionAtTime, gravitationalAccelerationAtPoint} from '../utils/orbitalMath';
+import {POSITION_SCALE, getSimDaysPerPhysicsTick} from '../config/scales';
+import {SIM_TIME_DAYS} from '../state/simulation';
+import {MEarthxGperAU3} from '../utils/constants';
 
 /**
  * PathPredictor attaches to a dynamic body (e.g., Meteor) and renders a dashed
@@ -21,7 +21,7 @@ export class PathPredictor implements UpdatableEntity {
   private target: Meteor;
   private gfx: Graphics | null = null;
   // Position required by UpdatableEntity. For a predictor we mirror target position.
-  position = { x: 0, y: 0, z: 0 } as any; // minimal vector-like object; target holds real state
+  position = {x: 0, y: 0, z: 0} as any; // minimal vector-like object; target holds real state
 
   // Prediction parameters (simulation time based)
   // steps is the CURRENT dynamically allocated count of prediction samples.
@@ -72,8 +72,8 @@ export class PathPredictor implements UpdatableEntity {
   constructor(id: string, target: Meteor) {
     this.id = id;
     this.target = target;
-  // Allocate an empty buffer; real size allocated on first recompute.
-  this.path = new Float32Array(0);
+    // Allocate an empty buffer; real size allocated on first recompute.
+    this.path = new Float32Array(0);
   }
 
   private forceNext = false;
@@ -89,18 +89,45 @@ export class PathPredictor implements UpdatableEntity {
     // Snapshot orbital elements; reuse planet.orbitPhase (same param Planet.ts uses in meanAnomaly)
     this.planetOrbitMeta = PLANETS.map(p => {
       const o = p.orbit as any;
-      if (!o) return { body: p, hasOrbit: false, semiMajorAxis: 0, eccentricity: 0, inclinationDeg: 0, longitudeAscendingNodeDeg: 0, argumentOfPeriapsisDeg: 0, periodDays: 1, orbitPhase: 0 };
-      const { semiMajorAxis, eccentricity, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg, periodDays } = o;
-      return { body: p, hasOrbit: true, semiMajorAxis, eccentricity, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg, periodDays, orbitPhase: (p as any).orbitPhase || 0 };
+      if (!o) return {
+        body: p,
+        hasOrbit: false,
+        semiMajorAxis: 0,
+        eccentricity: 0,
+        inclinationDeg: 0,
+        longitudeAscendingNodeDeg: 0,
+        argumentOfPeriapsisDeg: 0,
+        periodDays: 1,
+        orbitPhase: 0
+      };
+      const {
+        semiMajorAxis,
+        eccentricity,
+        inclinationDeg,
+        longitudeAscendingNodeDeg,
+        argumentOfPeriapsisDeg,
+        periodDays
+      } = o;
+      return {
+        body: p,
+        hasOrbit: true,
+        semiMajorAxis,
+        eccentricity,
+        inclinationDeg,
+        longitudeAscendingNodeDeg,
+        argumentOfPeriapsisDeg,
+        periodDays,
+        orbitPhase: (p as any).orbitPhase || 0
+      };
     });
     this.recomputePath();
   }
 
   update(dt: number): void {
     if (!this.gfx) return;
-  // Accumulate simulation seconds (dt passed into entities is sim seconds)
-  this.accumulatorSimSeconds += dt;
-  this.ticksSinceLast++;
+    // Accumulate simulation seconds (dt passed into entities is sim seconds)
+    this.accumulatorSimSeconds += dt;
+    this.ticksSinceLast++;
 
     const stateChanged = (
       this.target.velocity.x !== this.lastVX ||
@@ -148,19 +175,19 @@ export class PathPredictor implements UpdatableEntity {
     let vy = this.target.velocity.y;
     let vz = this.target.velocity.z;
 
-  // Use same physics tick as the meteor (100Hz fixed) for matching integration.
-  const stepDays = getSimDaysPerPhysicsTick();
-  const stepSeconds = stepDays * 86400; // entity dt seconds identical to Meteor.update usage
+    // Use same physics tick as the meteor (100Hz fixed) for matching integration.
+    const stepDays = getSimDaysPerPhysicsTick();
+    const stepSeconds = stepDays * 86400; // entity dt seconds identical to Meteor.update usage
     const horizonSeconds = this.horizonDays * 86400;
-  // Derive how many fixed-size steps fit into the horizon. Clamped to avoid
-  // pathological allocations. This is the ONLY place steps is set.
-  const neededSteps = Math.max(50, Math.min(20000, Math.floor(horizonSeconds / stepSeconds)));
+    // Derive how many fixed-size steps fit into the horizon. Clamped to avoid
+    // pathological allocations. This is the ONLY place steps is set.
+    const neededSteps = Math.max(50, Math.min(20000, Math.floor(horizonSeconds / stepSeconds)));
     if (neededSteps !== this.steps) {
       this.steps = neededSteps;
       if (this.path.length !== this.steps * 2) this.path = new Float32Array(this.steps * 2);
     }
 
-  const startSimSeconds = SIM_TIME_DAYS * 86400; // convert stored days to seconds
+    const startSimSeconds = SIM_TIME_DAYS * 86400; // convert stored days to seconds
 
     for (let i = 0; i < this.steps; i++) {
       const futureAbsSeconds = startSimSeconds + (i + 1) * stepSeconds;
@@ -176,12 +203,12 @@ export class PathPredictor implements UpdatableEntity {
             longitudeAscendingNodeDeg: meta.longitudeAscendingNodeDeg,
             argumentOfPeriapsisDeg: meta.argumentOfPeriapsisDeg
           }, meta.orbitPhase || 0, futureAbsSeconds);
-          futureBodies.push({ massEarths: meta.body.massEarths, position: { x: rx, y: ry, z: rz } });
+          futureBodies.push({massEarths: meta.body.massEarths, position: {x: rx, y: ry, z: rz}});
         } else {
-          futureBodies.push({ massEarths: meta.body.massEarths, position: meta.body.position });
+          futureBodies.push({massEarths: meta.body.massEarths, position: meta.body.position});
         }
       }
-      const [ax, ay, az] = gravitationalAccelerationAtPoint(px, py, pz, futureBodies, MExGperAU3);
+      const [ax, ay, az] = gravitationalAccelerationAtPoint(px, py, pz, futureBodies, MEarthxGperAU3);
       vx += ax * stepSeconds;
       vy += ay * stepSeconds;
       vz += az * stepSeconds;
@@ -234,7 +261,7 @@ export class PathPredictor implements UpdatableEntity {
       const alpha = startAlpha + (endAlpha - startAlpha) * frac;
       g.moveTo(x0, y0);
       g.lineTo(x1, y1);
-      g.stroke({ width: 2, color: 0xff3333, alpha });
+      g.stroke({width: 2, color: 0xff3333, alpha});
       traversed += segLen;
     }
   }
@@ -244,5 +271,7 @@ export class PathPredictor implements UpdatableEntity {
     this.gfx = null;
   }
 
-  get graphics(): Graphics | null { return this.gfx; }
+  get graphics(): Graphics | null {
+    return this.gfx;
+  }
 }

@@ -3,22 +3,24 @@ import {Application, Graphics} from "pixi.js";
 import {AU_IN_KM, MIN_PIXEL_RADIUS, POSITION_SCALE, RADIUS_SCALE} from "../config/scales";
 import {Vector} from "../utils/Vector";
 import {PLANETS} from "../data/bodies";
-import {MExGperAU3} from "../utils/constants";
+import {MEarthxGperAU3} from "../utils/constants";
 import {gravitationalAccelerationAtPoint} from "../utils/orbitalMath";
 
 export class Meteor implements UpdatableEntity {
 
   id: string;
   color: number;
+  mass: number;
 
   position: Vector;
   velocity: Vector;
 
   private gfx: Graphics | null = null;
 
-  constructor(id: string, x: number, y: number, z: number, dx: number = 0, dy: number = 0, dz: number = 0, color: number = 0xff3333) {
+  constructor(id: string, x: number, y: number, z: number, dx: number = 0, dy: number = 0, dz: number = 0, mass: number, color: number = 0xff3333) {
     this.id = id;
     this.color = color;
+    this.mass = mass;
     this.position = new Vector(x, y, z);
     this.velocity = new Vector(dx, dy, dz);
   }
@@ -35,7 +37,7 @@ export class Meteor implements UpdatableEntity {
         this.position.y,
         this.position.z,
         PLANETS,
-        MExGperAU3
+        MEarthxGperAU3
       );
       this.velocity = this.velocity.add(new Vector(ax, ay, az).scale(dt));
       this.position = this.position.add(this.velocity.scale(dt));

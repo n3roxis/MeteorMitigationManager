@@ -6,16 +6,21 @@ import {METEOR_UNO, METEORS} from "../../../solar_system/data/meteors";
 import {GlowEffect} from "../../../solar_system/entities/GlowEffect";
 import {clearEntities, ENTITIES, registerEntity} from "../../../solar_system/state/entities";
 import {advanceSimulation, resetSimulationTime, SIM_TIME_DAYS} from "../../../solar_system/state/simulation";
-import {POSITION_SCALE, updateScales, getSimDaysPerPhysicsTick, PHYSICS_TICKS_PER_SECOND} from "../../../solar_system/config/scales";
+import {
+  POSITION_SCALE,
+  updateScales,
+  getSimDaysPerPhysicsTick,
+  PHYSICS_TICKS_PER_SECOND
+} from "../../../solar_system/config/scales";
 import {Orbit} from "../../../solar_system/entities/Orbit";
 import {PathPredictor} from "../../../solar_system/entities/PathPredictor";
 import {PlanetLabel} from "../../../solar_system/entities/PlanetLabel";
 import LaunchButton from './LaunchButton';
-import { computeLagrangePoints } from '../../../solar_system/utils/lagrange';
-import { LagrangePoint } from '../../../solar_system/entities/LagrangePoint';
-import { Vector } from '../../../solar_system/utils/Vector';
-import { processActions } from '../../../solar_system/economy/actions';
-import { economyState } from '../../../solar_system/economy/state';
+import {computeLagrangePoints} from '../../../solar_system/utils/lagrange';
+import {LagrangePoint} from '../../../solar_system/entities/LagrangePoint';
+import {Vector} from '../../../solar_system/utils/Vector';
+import {processActions} from '../../../solar_system/economy/actions';
+import {economyState} from '../../../solar_system/economy/state';
 import {InterceptPath} from "../../../solar_system/entities/Interceptor/InterceptPath.ts";
 import {SecondsPerDay, SecondsPerMonth} from "../../../solar_system/utils/constants.ts";
 import {Projectile} from "../../../solar_system/entities/Projectile.ts";
@@ -37,28 +42,28 @@ export const SolarSystemPanel = () => {
     if (!el) return;
 
     let disposed = false;
-  const app = new Application();
-  // Performance overlay DOM element
-  const perfDiv = document.createElement('div');
-  perfDiv.style.position = 'absolute';
-  perfDiv.style.top = '4px';
-  // Shift right to clear 300px economy panel width + 12px gap
-  perfDiv.style.left = '8px';
-  perfDiv.style.padding = '4px 6px';
-  perfDiv.style.background = 'rgba(0,0,0,0.45)';
-  perfDiv.style.color = '#fff';
-  perfDiv.style.font = '12px monospace';
-  perfDiv.style.pointerEvents = 'none';
-  perfDiv.style.borderRadius = '4px';
-  el.appendChild(perfDiv);
+    const app = new Application();
+    // Performance overlay DOM element
+    const perfDiv = document.createElement('div');
+    perfDiv.style.position = 'absolute';
+    perfDiv.style.top = '4px';
+    // Shift right to clear 300px economy panel width + 12px gap
+    perfDiv.style.left = '8px';
+    perfDiv.style.padding = '4px 6px';
+    perfDiv.style.background = 'rgba(0,0,0,0.45)';
+    perfDiv.style.color = '#fff';
+    perfDiv.style.font = '12px monospace';
+    perfDiv.style.pointerEvents = 'none';
+    perfDiv.style.borderRadius = '4px';
+    el.appendChild(perfDiv);
     let centerX = 0; // viewport center in pixels
     let centerY = 0;
     const scene = new Container();
     app.stage.addChild(scene);
     // Track last entity count to start newly added entities (e.g., projectiles)
     let lastEntityCount = 0;
-  // Camera mode toggle (press 'c' to switch between barycenter and sun)
-  let cameraMode: 'barycenter' | 'sun' = 'barycenter';
+    // Camera mode toggle (press 'c' to switch between barycenter and sun)
+    let cameraMode: 'barycenter' | 'sun' = 'barycenter';
 
     // One-time initialization
     const init = async () => {
@@ -157,8 +162,12 @@ export const SolarSystemPanel = () => {
 
     const physicsStep = () => {
       advanceSimulation(physicsDtSimDays); // sim time advanced in days
-      for (const e of ENTITIES) { if (!(e instanceof (Orbit as any))) e.update(physicsDtSimSeconds); }
-      for (const e of ENTITIES) { if (e instanceof (Orbit as any)) e.update(physicsDtSimSeconds); }
+      for (const e of ENTITIES) {
+        if (!(e instanceof (Orbit as any))) e.update(physicsDtSimSeconds);
+      }
+      for (const e of ENTITIES) {
+        if (e instanceof (Orbit as any)) e.update(physicsDtSimSeconds);
+      }
       // Economy action processing (convert sim days to seconds)
       if (economyState.actions.length) {
         processActions(economyState, SIM_TIME_DAYS * 86400);
@@ -170,99 +179,102 @@ export const SolarSystemPanel = () => {
       if (ENTITIES.length > lastEntityCount) {
         for (let i = lastEntityCount; i < ENTITIES.length; i++) {
           const ent: any = ENTITIES[i];
-          if (!ent.graphics && ent.start) { ent.start(app); if (ent.graphics) scene.addChild(ent.graphics); }
+          if (!ent.graphics && ent.start) {
+            ent.start(app);
+            if (ent.graphics) scene.addChild(ent.graphics);
+          }
         }
         lastEntityCount = ENTITIES.length;
       }
       physicsTicks++;
     };
 
-        const startFixedLoop = () => {
-            const tickMs = 1000 / PHYSICS_TICKS_PER_SECOND;
-            const loop = () => {
-                if (disposed) return;
-                const now = performance.now();
-                let frame = now - lastMs;
-                if (frame > 250) frame = 250; // clamp pause
-                lastMs = now;
-                accumulatorMs += frame;
-                while (accumulatorMs >= tickMs) {
-                    physicsStep();
-                    accumulatorMs -= tickMs;
-                }
-                // Camera update after physics
-                if (cameraMode === 'sun' && SUN) {
-                    scene.position.set(centerX, centerY);
-                } else if (EARTH_MOON_BARYCENTER) {
-                    const tx = EARTH_MOON_BARYCENTER.position.x * POSITION_SCALE;
-                    const ty = EARTH_MOON_BARYCENTER.position.y * POSITION_SCALE;
-                    scene.position.set(centerX - tx, centerY - ty);
-                }
-                app.render();
-                frames++;
-                statsTimer += frame;
-                if (now - lastPerfUpdate >= 500) { // update overlay twice a second
-                    const fps = (frames * 1000) / statsTimer;
-                    const pps = (physicsTicks * 1000) / statsTimer;
-                    perfDiv.textContent = `FPS ${fps.toFixed(1)} | Physics ${pps.toFixed(1)}Hz`;
-                    frames = 0;
-                    physicsTicks = 0;
-                    statsTimer = 0;
-                    lastPerfUpdate = now;
-                }
-                requestAnimationFrame(loop);
-            };
-            requestAnimationFrame(loop);
-        };
+    const startFixedLoop = () => {
+      const tickMs = 1000 / PHYSICS_TICKS_PER_SECOND;
+      const loop = () => {
+        if (disposed) return;
+        const now = performance.now();
+        let frame = now - lastMs;
+        if (frame > 250) frame = 250; // clamp pause
+        lastMs = now;
+        accumulatorMs += frame;
+        while (accumulatorMs >= tickMs) {
+          physicsStep();
+          accumulatorMs -= tickMs;
+        }
+        // Camera update after physics
+        if (cameraMode === 'sun' && SUN) {
+          scene.position.set(centerX, centerY);
+        } else if (EARTH_MOON_BARYCENTER) {
+          const tx = EARTH_MOON_BARYCENTER.position.x * POSITION_SCALE;
+          const ty = EARTH_MOON_BARYCENTER.position.y * POSITION_SCALE;
+          scene.position.set(centerX - tx, centerY - ty);
+        }
+        app.render();
+        frames++;
+        statsTimer += frame;
+        if (now - lastPerfUpdate >= 500) { // update overlay twice a second
+          const fps = (frames * 1000) / statsTimer;
+          const pps = (physicsTicks * 1000) / statsTimer;
+          perfDiv.textContent = `FPS ${fps.toFixed(1)} | Physics ${pps.toFixed(1)}Hz`;
+          frames = 0;
+          physicsTicks = 0;
+          statsTimer = 0;
+          lastPerfUpdate = now;
+        }
+        requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+    };
 
-        const resizeToElement = () => {
-            if (disposed) return;
-            const rect = el.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-                app.renderer.resize(rect.width, rect.height);
-                for (const e of ENTITIES) {
-                    if ((e as any).markDirty) (e as any).markDirty();
-                }
-                // Force immediate predictor rebuild pass (zero dt update) for visual responsiveness
-                for (const e of ENTITIES) {
-                    if ((e as any).markDirty && (e as any).recomputePath) (e as any).update(0);
-                }
-                centerX = rect.width / 2;
-                centerY = rect.height / 2;
-            }
-            // Camera centering happens in tick; here we only update base center values
-        };
+    const resizeToElement = () => {
+      if (disposed) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        app.renderer.resize(rect.width, rect.height);
+        for (const e of ENTITIES) {
+          if ((e as any).markDirty) (e as any).markDirty();
+        }
+        // Force immediate predictor rebuild pass (zero dt update) for visual responsiveness
+        for (const e of ENTITIES) {
+          if ((e as any).markDirty && (e as any).recomputePath) (e as any).update(0);
+        }
+        centerX = rect.width / 2;
+        centerY = rect.height / 2;
+      }
+      // Camera centering happens in tick; here we only update base center values
+    };
 
-        const onWheel = (e: WheelEvent) => {
-            // Prevent page scroll while zooming canvas
-            e.preventDefault();
-            // Increased zoom sensitivity (was 1.1); 1.2 ~ double the per-notch scale change
-            const zoomFactor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
-            updateScales(zoomFactor);
-            for (const e of ENTITIES) {
-                if ((e as any).markDirty) (e as any).markDirty();
-            }
-            // Force predictors to rebuild instantly so zoom feedback is immediate
-            for (const e of ENTITIES) {
-                if ((e as any).markDirty && (e as any).recomputePath) (e as any).update(0);
-            }
-            // Entities will detect scale change and redraw in their update; immediately reposition
-            // Force redraw in two phases for consistency after zoom
-            for (const e of ENTITIES) {
-                if (!(e instanceof (Orbit as any))) e.update(0);
-            }
-            for (const e of ENTITIES) {
-                if (e instanceof (Orbit as any)) e.update(0);
-            }
-            // Reposition immediately so zoom feels responsive
-            if (EARTH_MOON_BARYCENTER) {
-                const tx = EARTH_MOON_BARYCENTER.position.x * POSITION_SCALE;
-                const ty = EARTH_MOON_BARYCENTER.position.y * POSITION_SCALE;
-                scene.position.set(centerX - tx, centerY - ty);
-            }
-        };
+    const onWheel = (e: WheelEvent) => {
+      // Prevent page scroll while zooming canvas
+      e.preventDefault();
+      // Increased zoom sensitivity (was 1.1); 1.2 ~ double the per-notch scale change
+      const zoomFactor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+      updateScales(zoomFactor);
+      for (const e of ENTITIES) {
+        if ((e as any).markDirty) (e as any).markDirty();
+      }
+      // Force predictors to rebuild instantly so zoom feedback is immediate
+      for (const e of ENTITIES) {
+        if ((e as any).markDirty && (e as any).recomputePath) (e as any).update(0);
+      }
+      // Entities will detect scale change and redraw in their update; immediately reposition
+      // Force redraw in two phases for consistency after zoom
+      for (const e of ENTITIES) {
+        if (!(e instanceof (Orbit as any))) e.update(0);
+      }
+      for (const e of ENTITIES) {
+        if (e instanceof (Orbit as any)) e.update(0);
+      }
+      // Reposition immediately so zoom feels responsive
+      if (EARTH_MOON_BARYCENTER) {
+        const tx = EARTH_MOON_BARYCENTER.position.x * POSITION_SCALE;
+        const ty = EARTH_MOON_BARYCENTER.position.y * POSITION_SCALE;
+        scene.position.set(centerX - tx, centerY - ty);
+      }
+    };
 
-        el.addEventListener('wheel', onWheel, {passive: false});
+    el.addEventListener('wheel', onWheel, {passive: false});
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'c' || e.key === 'C') {
@@ -344,13 +356,18 @@ export const SolarSystemPanel = () => {
           //interceptor?.calculatePath()
 
           console.log("Launch dummy")
-          const velocity = interceptor.chosenPath?.departureVelocity
-          if (velocity) {
+          const chosenPath = interceptor.chosenPath
+          if (chosenPath) {
+            const velocity = chosenPath.departureVelocity
+            const cost = chosenPath.fuelConsumptionMass! / 1000
+            const meteorVChange = chosenPath.meteorVelocityChange!.length()
             const proj = new Projectile(`proj5-${++projectileCounter}`, EARTH.position, velocity);
             registerEntity(proj);
+            console.log("Launching projectile with velocity " + velocity.length() + " and cost " + cost + " and meteorVChange " + meteorVChange)
           } else {
             console.log("Velocity was undefined")
           }
+
         }
       }
       /*
@@ -438,8 +455,8 @@ return hyp2f1(a, b, c, z);
   }, []);
 
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
-      <LaunchButton />
+    <div ref={containerRef} style={{width: '100%', height: '100%', position: 'relative'}}>
+      <LaunchButton/>
     </div>
   );
 };

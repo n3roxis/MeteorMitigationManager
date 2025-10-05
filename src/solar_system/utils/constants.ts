@@ -5,7 +5,8 @@ export const DEBUG_AU = 1.4959787 * 10 ** 11 // Astronomical Unit in meters
 export const DEBUG_ME = 5.9722 * 10 ** 24 // Earth mass in kilograms
 export const DEBUG_MS = 1.989 * 10 ** 30
 export const DEBUG_G = 6.67430 * 10 ** -11 // Gravitational constants
-export const RADIUS_OF_EARTH_AU = 6371000 / DEBUG_AU;
+export const RADIUS_OF_EARTH_KM = 6371000;
+export const RADIUS_OF_EARTH_AU = RADIUS_OF_EARTH_KM / DEBUG_AU;
 
 export const MEarthxGperAU3 = DEBUG_ME * DEBUG_G / DEBUG_AU / DEBUG_AU / DEBUG_AU; // Gravitational constant times earth mass * astronomical unit (multiplied to reduce floating point errors)
 

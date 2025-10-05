@@ -9,3 +9,7 @@ export function resetSimulationTime() {
 export function advanceSimulation(simDeltaDays: number) {
   SIM_TIME_DAYS += simDeltaDays;
 }
+
+export function getCurrentSimSeconds() {
+  return SIM_TIME_DAYS * 86400;
+}

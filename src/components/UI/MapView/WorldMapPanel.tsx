@@ -3,8 +3,7 @@ import { Application, Assets, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
 import { calculateImpactRadii } from '../../../Logic/formulas';
 import '../../../Logic/formulas.test';
-import { testing_impact } from '../../../Logic/formulas.test';
-import { RadiusType, toMercator } from '../../../Logic/Utils/TranslationInterface';
+import { DataBroker, RadiusType, toMercator } from '../../../Logic/Utils/TranslationInterface';
 import { Vector } from '../../../solar_system/utils/Vector';
 import { ImpactStack } from '../../Graphics/Impact/ImpactStack';
 import DensityMap from './resources/DensityMap_edit.png';
@@ -73,8 +72,8 @@ export const WorldMapPanel: React.FC = () => {
           viewport.fit(true);
 
           app.ticker.add((tick)=>{
-            //const impact = DataBroker.instance.getImpact()
-            const impact = testing_impact;
+            const impact = DataBroker.instance.getImpact()
+            //const impact = testing_impact;
             if(impact){
               const radii = calculateImpactRadii(impact)
               stack.applyList(radii,app);

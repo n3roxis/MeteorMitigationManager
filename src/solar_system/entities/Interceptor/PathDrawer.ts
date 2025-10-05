@@ -1,11 +1,14 @@
 // src/solar_system/utils/path_tools.ts
-import { Graphics } from "pixi.js";
-import { getSimDaysPerPhysicsTick, POSITION_SCALE } from "../../config/scales.ts";
-import { SIM_TIME_DAYS } from "../../state/simulation.ts";
-import { PLANETS } from "../../data/bodies.ts";
-import { gravitationalAccelerationAtPoint, orbitalPositionAtTime } from "../../utils/orbitalMath.ts";
-import { MEarthxGperAU3 } from "../../utils/constants.ts";
+import {Graphics} from "pixi.js";
+import {getSimDaysPerPhysicsTick, POSITION_SCALE} from "../../config/scales.ts";
+import {SIM_TIME_DAYS} from "../../state/simulation.ts";
+import {PLANETS} from "../../data/bodies.ts";
+import {gravitationalAccelerationAtPoint, orbitalPositionAtTime} from "../../utils/orbitalMath.ts";
+import {MEarthxGperAU3} from "../../utils/constants.ts";
 import {Vector} from "../../utils/Vector.ts";
+
+
+// DONT USE THIS !!!
 
 export type PathPoint = { t: number; pos: Vector };
 
@@ -19,6 +22,7 @@ type Meta =
 };
 
 /**
+ * DONT USE THIS !!!
  * 1) Integriert über T_seconds und liefert Punkte mit Zeitstempeln (Sim-Sekunden).
  *    - Euler, Planeten am Schrittende (wie dein PathPredictor)
  *    - dt = getSimDaysPerPhysicsTick() (optional überschreibbar)
@@ -43,7 +47,7 @@ export function computePathWithTimestamps(
   // Planeten-Metadaten
   const meta: Meta[] = PLANETS.map(p => {
     const o = (p as any).orbit as any | undefined;
-    if (!o) return { body: p, hasOrbit: false } as const;
+    if (!o) return {body: p, hasOrbit: false} as const;
     return {
       body: p, hasOrbit: true,
       semiMajorAxis: o.semiMajorAxis, eccentricity: o.eccentricity, periodDays: o.periodDays,
@@ -75,9 +79,9 @@ export function computePathWithTimestamps(
           },
           m.orbitPhase, futureAbsSec
         );
-        bodies.push({ massEarths: (m.body as any).massEarths, position: { x: rx, y: ry, z: rz } });
+        bodies.push({massEarths: (m.body as any).massEarths, position: {x: rx, y: ry, z: rz}});
       } else {
-        bodies.push({ massEarths: (m.body as any).massEarths, position: (m.body as any).position });
+        bodies.push({massEarths: (m.body as any).massEarths, position: (m.body as any).position});
       }
     }
 
@@ -88,13 +92,13 @@ export function computePathWithTimestamps(
     p = p.add(v.scale(dt));
 
     accT += dt;
-    points.push({ t: accT, pos: p });
+    points.push({t: accT, pos: p});
   };
 
   for (let i = 0; i < nWhole; i++) stepOnce(sign * stepSec);
   if (remainder > 0) stepOnce(sign * remainder);
 
-  return { points, endPos: p, endVel: v };
+  return {points, endPos: p, endVel: v};
 }
 
 /**
@@ -119,5 +123,5 @@ export function drawPath(
     const p = path[i].pos;
     g.lineTo(p.x * POSITION_SCALE, p.y * POSITION_SCALE);
   }
-  g.stroke({ width: w, color, alpha });
+  g.stroke({width: w, color, alpha});
 }

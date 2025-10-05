@@ -7,7 +7,7 @@ import { testing_impact } from '../../../Logic/formulas.test';
 import { RadiusType, toMercator } from '../../../Logic/Utils/TranslationInterface';
 import { Vector } from '../../../solar_system/utils/Vector';
 import { ImpactStack } from '../../Graphics/Impact/ImpactStack';
-import DensityMap from './resources/DensityMap.png';
+import DensityMap from './resources/DensityMap_edit.png';
 import WorldMap from './resources/WorldMap.png';
 
 
@@ -50,7 +50,7 @@ export const WorldMapPanel: React.FC = () => {
           // setup map background
           const tex = await Assets.load(WorldMap);
           const map = new Sprite(tex);
-          map.tint ='#ffffffff';
+          map.tint ='#7f7f7fff';
           viewport.addChild(map);
           map.anchor.set(0.5,0.5);
           map.position.set(rect.width/2,rect.height/2);
@@ -58,7 +58,7 @@ export const WorldMapPanel: React.FC = () => {
           //Bevölkerungsdichtekarte
           const density= await Assets.load(DensityMap);
           const place= new Sprite(density);
-          place.tint ='#ffffffff';
+          place.tint ='#fdfaa6ff';
           viewport.addChild(place);
           place.anchor.set(0.5,0.5);
           place.position.set(rect.width/2,rect.height/2);
@@ -78,8 +78,7 @@ export const WorldMapPanel: React.FC = () => {
             if(impact){
               const radii = calculateImpactRadii(impact)
               stack.applyList(radii,app);
-              //const cord = toMercator(RAD_TO_DEG* impact.longLat.lamb,RAD_TO_DEG*impact.longLat.phi);
-              const cord = toMercator(0,0);
+              const cord = toMercator(impact.longLat.lamb,impact.longLat.phi);
               stack.move(new Vector(cord.x,cord.y,0));
               stack.updateViewPort(viewport);
               stack.update(tick.deltaTime);
@@ -88,8 +87,6 @@ export const WorldMapPanel: React.FC = () => {
                 //const dead = GetPopulationinArea(cord.x,cord.y,rad);
                 //console.log(dead);
               }
-            }else{
-              
             }
           })
   

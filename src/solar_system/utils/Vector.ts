@@ -20,6 +20,10 @@ export class Vector {
     return Vector.subtract(this, b);
   }
 
+  dot(b: Vector): number {
+    return this.x * b.x + this.y * b.y + this.z * b.z;
+  }
+
   cross(b: Vector): Vector {
       return new Vector(
           this.y * b.z - this.z * b.y,

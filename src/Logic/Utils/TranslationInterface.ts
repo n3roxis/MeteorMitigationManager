@@ -1,29 +1,33 @@
 import {Vector} from "../../solar_system/utils/Vector";
 import {SCALE} from "./Constants";
 
-export const toMercator = (lambda: number, phi: number) => {
-  let x = SCALE * (lambda - 0);
-  let y = SCALE * Math.log(Math.tan(Math.PI / 4 - phi / 2));
-  return {x, y}
+export const toMercator = (lambda:number,phi:number) =>{
+    let x= SCALE*(lambda - 0);
+    let y = SCALE*Math.log(Math.tan(Math.PI/4-phi/2));
+    return {x,y}
 }
 
-export type Impact = {
-  mass: number, // kg
-  density: number,
-  velocity: number,
-  angle: number, // Radians
-  longLat: { longitude: number, latitude: number }
+export class Impact{
+    name:string
+    mass:number
+    density:number
+    velocity:number
+    angle:number
+    longLat:{lamb: number,phi: number}
+
+    /**
+     * longLat = longitude Latitude in a 2 tuple in named order
+     */
+    constructor(name:string,mass:number,density:number,velocity:number,angle:number,longLat:{lamb: number, phi: number}){
+        this.name = name;
+        this.mass = mass;
+        this.density = density;
+        this.velocity = velocity;
+        this.angle = angle;
+        this.longLat = longLat;
+    }
 }
 
-
-export class SanitizedImpact {
-  radius: number = 0
-  position: Vector = Vector.zero();
-
-  constructor(impact: Impact) {
-
-  }
-}
 
 // Radians
 const initialRotation = 0
@@ -83,4 +87,28 @@ export class DataBroker {
   public setImpact(impact: Impact | null) {
     this._impact = impact;
   }
+}
+
+export enum RadiusType{
+    THERM_VIS, // two points
+    THERM_ACT, // two points
+    SEIS, //two points and richter
+    CRATER, // two points and depth
+    SHOCK // two points
+}
+
+export class Radius{
+    type:RadiusType
+    center:{long:number,lat:number}
+    radius:{long:number,lat:number}
+    data:number
+    tooltip:string
+
+    constructor(type:RadiusType,center:{long:number,lat:number},radius:{long:number,lat:number},data:number,tooltip:string){
+        this.type = type;
+        this.center = center;
+        this.radius = radius;
+        this.data = data;
+        this.tooltip = tooltip;
+    }
 }

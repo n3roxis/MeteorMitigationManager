@@ -1,3 +1,4 @@
+import DensityMap from '.resources/DensityMap.png';
 import { Viewport } from 'pixi-viewport';
 import { Application, Assets, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
@@ -6,7 +7,6 @@ import { Vector } from '../../../solar_system/utils/Vector';
 import { ImpactStack } from '../../Graphics/Impact/ImpactStack';
 import { Shockwave } from '../../Graphics/Impact/Shockwave';
 import WorldMap from './resources/WorldMap.png';
-import DensityMap from '.resources/DensityMap.png'
 
 
 const waves = [
@@ -119,20 +119,20 @@ export const WorldMapPanel: React.FC = () => {
 //onclick: set(x,y), get (r)/get(circleoffire)/get(circleofpressure)/get(seismiccircle) -> draw circle, collect pixel data within area, calculate range
 const GetPopulationinArea=(context:CanvasRenderingContext2D,x:number,y:number,radius:number):Array<number>=>{
     const population:Array<number>=[];
-    number ly=0;
-    number my=0;
-    number ty=0;
-    number O=0;
-    number or=0;
-    number r=0;
-    number dr=0;
-    number m=0;
+    let ly=0;
+    let my=0;
+    let ty=0;
+    let O=0;
+    let or=0;
+    let r=0;
+    let dr=0;
+    let m=0;
     for(let i=-radius;i<=radius;i++){
         for(let j=-radius;j<=radius;j++){
             if(i*i+j*j<=radius*radius){
                 const color=GetColorOfPixel(context,x+i,y+j);
                 
-                switch (color.join(' ');) {
+                switch (color.join(' ')) {
                   case '255 255 190': 
                   ly++;
                   
@@ -175,8 +175,8 @@ const GetPopulationinArea=(context:CanvasRenderingContext2D,x:number,y:number,ra
       }
       console.log(ly,my,ty,O,or,r,dr,m);
 
-      PopulationLB=ly+my*6+ty*26+O*51+or*101+r*501+dr*2501+m*5001;
-      PopulationUB=ly*5+my*25+ty*50+O*100+or*500+r*2500+dr*5000+m*185000;
+      const PopulationLB=ly+my*6+ty*26+O*51+or*101+r*501+dr*2501+m*5001;
+      const PopulationUB=ly*5+my*25+ty*50+O*100+or*500+r*2500+dr*5000+m*185000;
       population.push(PopulationLB,PopulationUB);
       return population;
 }

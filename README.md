@@ -34,4 +34,9 @@ npm run dev
 Vite will print a local URL (default: http://localhost:5173). Open it in your browser; edits under `src/` hot-reload automatically.
 
 
+#### Use of AI
+
+Parts of the Code were generated using artificial intelligence.
+
+
 MIT License

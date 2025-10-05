@@ -1,6 +1,9 @@
 ## Meteor Mitigation Manager
 
-Minimal starter project using Vite + React + TypeScript + PixiJS.
+Welcome to our project, submitted to SpaceAppsChallenge2025! 
+Check out the more detailled description including demo videos under: https://www.spaceappschallenge.org/2025/find-a-team/meteor-mitigation-manager/?tab=project
+
+The Meteor Mitigation Manager is an real-time educational game, built to visualize the impact of asteroids on earth, the possible mitigation strategies and their cost and effort. As asteroid after asteroid tumbles towards earth, decide your mitigation strategies and learn from your mistakes. Make an endless stream of choices in real-time: will you save the earth by deflecting a random asteroid entirely? Have it crash into the ocean instead of a city? Invest in tsunami dams and shelters or early detection systems? Up to you to explore.
 
 ### Stack
 - Vite (bundler & dev server)
@@ -8,16 +11,18 @@ Minimal starter project using Vite + React + TypeScript + PixiJS.
 - PixiJS 8
 
 ### Features Implemented
-1. Vite React + TS style scaffold (manually created to match requirements)
-2. Single `npm run dev` script launches the Vite dev server with hot reload
-3. PixiJS scene embedded in React component (`App.tsx`):
-	 - 800×600 canvas
-	 - Dark background (`#111111`)
-	 - Single centered yellow sun (static)
+* Realistic Meteor Orbits, calculated from orbital mechanics.
+* Realistic Lambert Trajectories for Kinetic Impactors from Earth to Meteors.
+* Realistic preview of Meteor Impact on Earth, including Fireball, Blastwave, Earthquakes and Crater.
+* Simulation of Environmental, Monetary and Human Losses based on real population data.
+* Realistic mitigation strategies, all within a cost simulation.
+* Simplified Mission Controls in a dashing UI.
 
 ### Getting Started
 
-#### 1. Install Dependencies
+#### 1. Clone the code with git clone
+
+#### 2. Install dependencies
 ```powershell
 npm install
 ```
@@ -28,37 +33,5 @@ npm run dev
 ```
 Vite will print a local URL (default: http://localhost:5173). Open it in your browser; edits under `src/` hot-reload automatically.
 
-#### 3. Build for Production
-```powershell
-npx vite build
-```
-Outputs static assets to `dist/`. You can preview the production build locally:
-```powershell
-npx vite preview
-```
 
-### Project Structure
-```
-index.html
-package.json
-tsconfig.json
-vite.config.ts
-src/
-	main.tsx
-	App.tsx
-	vite-env.d.ts
-```
-
-### Code Notes
-- Proper TypeScript PixiJS imports (`Application`, `Graphics`).
-- Single static graphic (no animation, no ticker).
-- Cleanup logic on React unmount destroys the Pixi application and resources.
-
-### Next Ideas (Optional)
-- Add resizing logic to fit window.
-- Introduce animation (orbiting bodies) using the Pixi ticker.
-- Add GUI (dat.GUI or Leva) to tweak parameters (sizes, colors).
-- Add more sprites and basic interaction/collision checks.
-
----
-MIT License (add LICENSE file if needed)
+MIT License

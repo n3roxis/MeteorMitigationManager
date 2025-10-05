@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test_orbits": "node --experimental-specifier-resolution=node ./orbit_tester/starter.ts"
+    "test_lambert_solver": "node ./src/solar_system/utils/lambert_solver_tester.spec.ts",
+    "test_all": "node --test \"src/**/*.spec.ts\""
   },
   "dependencies": {
     "pixi-viewport": "^6.0.3",
@@ -19,10 +20,12 @@
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "cross-env": "^10.1.0",
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.6",
-    "typescript": "^5.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
     "vite": "^7.1.9"
   }
 }

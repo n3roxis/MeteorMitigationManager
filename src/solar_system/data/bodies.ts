@@ -27,7 +27,7 @@ export const SUN = new Planet('sun', 696000, 332981.79, 0xffd54f, SUN_ORBIT, 3.1
 export const MERCURY = new Planet('mercury', 2439.5, 0.055243, 0xc0c0c0, MERCURY_ORBIT, 0.0);
 export const VENUS = new Planet('venus', 6051.8, 0.815254, 0xffc58f, VENUS_ORBIT, 0.0);
 // Barycenter (fictional) uses the system orbit (Earth's original orbital elements)
-export const EARTH_MOON_BARYCENTER = new Planet('earth-moon-bary', 10, 0, 0xaaaaaa, EARTH_MOON_SYSTEM_ORBIT, 0.0);
+export const EARTH_MOON_BARYCENTER = new Planet('earth-moon-bary', 10, 0, 0x4fa3ff, EARTH_MOON_SYSTEM_ORBIT, 0.0);
 // Earth now orbits barycenter with a tiny wobble orbit
 export const EARTH = new Planet('earth', 6378, 1.0, 0x4fa3ff, EARTH_WOBBLE_ORBIT, 0.0, EARTH_MOON_BARYCENTER);
 export const MARS = new Planet('mars', 3396, 0.10747, 0xff6f4f, MARS_ORBIT, 0.0);

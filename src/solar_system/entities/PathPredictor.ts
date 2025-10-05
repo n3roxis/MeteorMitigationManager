@@ -1,11 +1,12 @@
-import { Application, Graphics } from 'pixi.js';
-import { UpdatableEntity } from './Entity';
-import { Meteor } from './Meteor';
-import { PLANETS } from '../data/bodies';
-import { orbitalPositionAtTime, gravitationalAccelerationAtPoint } from '../utils/orbitalMath';
-import { POSITION_SCALE, getSimDaysPerPhysicsTick } from '../config/scales';
-import { SIM_TIME_DAYS } from '../state/simulation';
-import { MExGperAU3 } from '../utils/constants';
+import {Application, Graphics} from 'pixi.js';
+import {UpdatableEntity} from './Entity';
+import {Meteor} from './Meteor';
+import {PLANETS} from '../data/bodies';
+import {orbitalPositionAtTime, gravitationalAccelerationAtPoint} from '../utils/orbitalMath';
+import {POSITION_SCALE, getSimDaysPerPhysicsTick} from '../config/scales';
+import {SIM_TIME_DAYS} from '../state/simulation';
+import {MEarthxGperAU3, RADIUS_OF_EARTH} from '../utils/constants';
+import {Vector} from "../utils/Vector.ts";
 
 /**
  * PathPredictor attaches to a dynamic body (e.g., Meteor) and renders a dashed
@@ -21,7 +22,7 @@ export class PathPredictor implements UpdatableEntity {
   private target: Meteor;
   private gfx: Graphics | null = null;
   // Position required by UpdatableEntity. For a predictor we mirror target position.
-  position = { x: 0, y: 0, z: 0 } as any; // minimal vector-like object; target holds real state
+  position = {x: 0, y: 0, z: 0} as any; // minimal vector-like object; target holds real state
 
   // Prediction parameters (simulation time based)
   // steps is the CURRENT dynamically allocated count of prediction samples.
@@ -72,8 +73,8 @@ export class PathPredictor implements UpdatableEntity {
   constructor(id: string, target: Meteor) {
     this.id = id;
     this.target = target;
-  // Allocate an empty buffer; real size allocated on first recompute.
-  this.path = new Float32Array(0);
+    // Allocate an empty buffer; real size allocated on first recompute.
+    this.path = new Float32Array(0);
   }
 
   private forceNext = false;
@@ -89,18 +90,45 @@ export class PathPredictor implements UpdatableEntity {
     // Snapshot orbital elements; reuse planet.orbitPhase (same param Planet.ts uses in meanAnomaly)
     this.planetOrbitMeta = PLANETS.map(p => {
       const o = p.orbit as any;
-      if (!o) return { body: p, hasOrbit: false, semiMajorAxis: 0, eccentricity: 0, inclinationDeg: 0, longitudeAscendingNodeDeg: 0, argumentOfPeriapsisDeg: 0, periodDays: 1, orbitPhase: 0 };
-      const { semiMajorAxis, eccentricity, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg, periodDays } = o;
-      return { body: p, hasOrbit: true, semiMajorAxis, eccentricity, inclinationDeg, longitudeAscendingNodeDeg, argumentOfPeriapsisDeg, periodDays, orbitPhase: (p as any).orbitPhase || 0 };
+      if (!o) return {
+        body: p,
+        hasOrbit: false,
+        semiMajorAxis: 0,
+        eccentricity: 0,
+        inclinationDeg: 0,
+        longitudeAscendingNodeDeg: 0,
+        argumentOfPeriapsisDeg: 0,
+        periodDays: 1,
+        orbitPhase: 0
+      };
+      const {
+        semiMajorAxis,
+        eccentricity,
+        inclinationDeg,
+        longitudeAscendingNodeDeg,
+        argumentOfPeriapsisDeg,
+        periodDays
+      } = o;
+      return {
+        body: p,
+        hasOrbit: true,
+        semiMajorAxis,
+        eccentricity,
+        inclinationDeg,
+        longitudeAscendingNodeDeg,
+        argumentOfPeriapsisDeg,
+        periodDays,
+        orbitPhase: (p as any).orbitPhase || 0
+      };
     });
     this.recomputePath();
   }
 
   update(dt: number): void {
     if (!this.gfx) return;
-  // Accumulate simulation seconds (dt passed into entities is sim seconds)
-  this.accumulatorSimSeconds += dt;
-  this.ticksSinceLast++;
+    // Accumulate simulation seconds (dt passed into entities is sim seconds)
+    this.accumulatorSimSeconds += dt;
+    this.ticksSinceLast++;
 
     const stateChanged = (
       this.target.velocity.x !== this.lastVX ||
@@ -148,22 +176,109 @@ export class PathPredictor implements UpdatableEntity {
     let vy = this.target.velocity.y;
     let vz = this.target.velocity.z;
 
-  // Use same physics tick as the meteor (100Hz fixed) for matching integration.
-  const stepDays = getSimDaysPerPhysicsTick();
-  const stepSeconds = stepDays * 86400; // entity dt seconds identical to Meteor.update usage
+    // Use same physics tick as the meteor (100Hz fixed) for matching integration.
+    const stepDays = getSimDaysPerPhysicsTick();
+    const stepSeconds = stepDays * 86400; // entity dt seconds identical to Meteor.update usage
     const horizonSeconds = this.horizonDays * 86400;
-  // Derive how many fixed-size steps fit into the horizon. Clamped to avoid
-  // pathological allocations. This is the ONLY place steps is set.
-  const neededSteps = Math.max(50, Math.min(20000, Math.floor(horizonSeconds / stepSeconds)));
+    // Derive how many fixed-size steps fit into the horizon. Clamped to avoid
+    // pathological allocations. This is the ONLY place steps is set.
+    const neededSteps = Math.max(50, Math.min(20000, Math.floor(horizonSeconds / stepSeconds)));
     if (neededSteps !== this.steps) {
       this.steps = neededSteps;
       if (this.path.length !== this.steps * 2) this.path = new Float32Array(this.steps * 2);
     }
 
-  const startSimSeconds = SIM_TIME_DAYS * 86400; // convert stored days to seconds
+    const startSimSeconds = SIM_TIME_DAYS * 86400; // convert stored days to seconds
+
+    let previousEarthLoc: Vector | null = null
+    let previousMeteorLoc: Vector | null = null
+    let futureEarthLoc: Vector | null = null
+    let futureMeteorLoc: Vector | null = null
+    let futureAbsSeconds: number = 0
+
+    function checkCollision() {
+
+      if (previousEarthLoc) {
+        const E1 = previousEarthLoc
+        const E2 = futureEarthLoc!
+        const A1 = previousMeteorLoc!
+        const A2 = futureMeteorLoc!
+
+        const T1 = futureAbsSeconds - stepSeconds
+        const T2 = futureAbsSeconds
+        const dT = stepSeconds
+
+        const deltaE = E2.subtract(E1)
+        const deltaA = A2.subtract(A1)
+
+        // Transform in rest frame of earth, posE = const, posA = A1 + dt * deltaATilde
+        const deltaATilde = deltaA.subtract(deltaE)
+
+        let closestDistance = 0
+        let collisionT: number | null = null
+
+        ChatGPT: {
+          const r0 = A1.subtract(E1);                 // relative position at start
+          const d = deltaATilde;                     // relative displacement over dT
+          const R = RADIUS_OF_EARTH;
+
+          // --- Abstand während des Schritts: r(t) = r0 + (t/dT)*d ---
+          // Gesucht: |r(t)| = R  →  (r0 + (t/dT)*d)² = R²
+          const a = d.dot(d);
+          const b = 2 * r0.dot(d);
+          const c = r0.dot(r0) - R * R;
+
+          let _closestDistance = Infinity;
+          let _collisionT: number | null = null;
+
+          if (a > 0) {
+            // Zeitpunkt minimaler Distanz (ggf. außerhalb des Schritts clampen)
+            let sClosest = -r0.dot(d) / a;
+            sClosest = Math.max(0, Math.min(1, sClosest));
+            const rClosest = r0.add(d.scale(sClosest));
+            _closestDistance = rClosest.length();
+
+            // Diskriminante für Schnittpunkt(e) mit der Kugel
+            const disc = b * b - 4 * a * c;
+            if (disc >= 0) {
+              const sqrtDisc = Math.sqrt(disc);
+              const s1 = (-b - sqrtDisc) / (2 * a);
+              const s2 = (-b + sqrtDisc) / (2 * a);
+              const sHit = [s1, s2].find(s => s >= 0 && s <= 1);
+              if (sHit !== undefined) {
+                _collisionT = sHit * dT; // Zeit seit T1
+              }
+            }
+          } else {
+            _closestDistance = r0.length(); // keine Bewegung
+          }
+
+          (closestDistance as any) = _closestDistance;
+          (collisionT as any) = _collisionT;
+        }
+
+
+        if (closestDistance < RADIUS_OF_EARTH) {
+          // Collision detected
+          const collisionE = E1.add(deltaE.scale(collisionT!))
+          const collisionA = A1.add(deltaATilde.scale(collisionT!))
+
+          const collisionR = collisionA.subtract(collisionE) // Vector pointing from earth center to impact point
+          const velocityImpact = deltaATilde.scale(1 / (T2 - T1))
+
+          // Output parameters, dont change
+          const velocity = velocityImpact.length()
+          const angle = Math.acos(collisionR.normalized().dot(deltaATilde.normalized()))
+          const secondsUntilImpact = startSimSeconds + T1 + collisionT!
+        }
+      }
+      previousEarthLoc = futureEarthLoc;
+      previousMeteorLoc = futureMeteorLoc;
+    }
+
 
     for (let i = 0; i < this.steps; i++) {
-      const futureAbsSeconds = startSimSeconds + (i + 1) * stepSeconds;
+      futureAbsSeconds = startSimSeconds + (i + 1) * stepSeconds;
       // Build temporary bodies array with analytic planet positions at this future time
       const futureBodies: Array<{ massEarths: number; position: { x: number; y: number; z: number } }> = [];
       for (const meta of this.planetOrbitMeta) {
@@ -176,12 +291,19 @@ export class PathPredictor implements UpdatableEntity {
             longitudeAscendingNodeDeg: meta.longitudeAscendingNodeDeg,
             argumentOfPeriapsisDeg: meta.argumentOfPeriapsisDeg
           }, meta.orbitPhase || 0, futureAbsSeconds);
-          futureBodies.push({ massEarths: meta.body.massEarths, position: { x: rx, y: ry, z: rz } });
+          futureBodies.push({massEarths: meta.body.massEarths, position: {x: rx, y: ry, z: rz}});
+
+          //// Check collisions with the Earth
+          if (meta.body.id === 'earth') {
+            futureEarthLoc = new Vector(rx, ry, rz)
+          }
         } else {
-          futureBodies.push({ massEarths: meta.body.massEarths, position: meta.body.position });
+          futureBodies.push({massEarths: meta.body.massEarths, position: meta.body.position});
         }
       }
-      const [ax, ay, az] = gravitationalAccelerationAtPoint(px, py, pz, futureBodies, MExGperAU3);
+
+
+      const [ax, ay, az] = gravitationalAccelerationAtPoint(px, py, pz, futureBodies, MEarthxGperAU3);
       vx += ax * stepSeconds;
       vy += ay * stepSeconds;
       vz += az * stepSeconds;
@@ -191,6 +313,11 @@ export class PathPredictor implements UpdatableEntity {
       const o = i * 2;
       this.path[o] = px * POSITION_SCALE;
       this.path[o + 1] = py * POSITION_SCALE;
+
+      futureMeteorLoc = new Vector(px, py, pz)
+
+      checkCollision()
+
     }
 
     this.lastVX = this.target.velocity.x;
@@ -234,7 +361,7 @@ export class PathPredictor implements UpdatableEntity {
       const alpha = startAlpha + (endAlpha - startAlpha) * frac;
       g.moveTo(x0, y0);
       g.lineTo(x1, y1);
-      g.stroke({ width: 2, color: 0xff3333, alpha });
+      g.stroke({width: 2, color: 0xff3333, alpha});
       traversed += segLen;
     }
   }
@@ -244,5 +371,7 @@ export class PathPredictor implements UpdatableEntity {
     this.gfx = null;
   }
 
-  get graphics(): Graphics | null { return this.gfx; }
+  get graphics(): Graphics | null {
+    return this.gfx;
+  }
 }

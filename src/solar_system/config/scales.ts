@@ -12,7 +12,7 @@ export const MIN_PIXEL_RADIUS = 2; // floor for visibility
 export let SIM_DAYS_PER_REAL_SECOND = 1;
 
 // Fixed physics rate (ticks per real second). Predictor and meteor should use same dt derived from this.
-export const PHYSICS_TICKS_PER_SECOND = 100; // 100Hz physics
+export const PHYSICS_TICKS_PER_SECOND = 300; // 100Hz physics
 export function getSimDaysPerPhysicsTick(): number {
   return SIM_DAYS_PER_REAL_SECOND / PHYSICS_TICKS_PER_SECOND;
 }

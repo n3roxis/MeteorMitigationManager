@@ -9,18 +9,21 @@ export class Meteor implements UpdatableEntity {
   id: string;
   color: number;
   mass: number;
+  timeOfFlight: number; //ALIVE TIME
 
   position: Vector;
   velocity: Vector;
 
+
   private gfx: Graphics | null = null;
 
-  constructor(id: string, x: number, y: number, z: number, dx: number = 0, dy: number = 0, dz: number = 0, mass: number, color: number = 0xff3333) {
+  constructor(id: string, x: number, y: number, z: number, dx: number = 0, dy: number = 0, dz: number = 0, mass: number, color: number = 0xff3333, timeOfFlight: number) {
     this.id = id;
     this.color = color;
     this.mass = mass;
     this.position = new Vector(x, y, z);
     this.velocity = new Vector(dx, dy, dz);
+    this.timeOfFlight = timeOfFlight;
   }
 
   start(app: Application) {

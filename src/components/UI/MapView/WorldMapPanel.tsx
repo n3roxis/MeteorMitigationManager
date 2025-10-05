@@ -1,9 +1,10 @@
 import { Viewport } from 'pixi-viewport';
-import { Application, Assets, Sprite } from 'pixi.js';
+import { Application, Assets, DEG_TO_RAD, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
 import { calculateImpactRadii } from '../../../Logic/formulas';
 import '../../../Logic/formulas.test';
-import { DataBroker, toMercator } from '../../../Logic/Utils/TranslationInterface';
+import { testing_impact } from '../../../Logic/formulas.test';
+import { toMercator } from '../../../Logic/Utils/TranslationInterface';
 import { Vector } from '../../../solar_system/utils/Vector';
 import { ImpactStack } from '../../Graphics/Impact/ImpactStack';
 import DensityMap from './resources/DensityMap.png';
@@ -65,15 +66,16 @@ export const WorldMapPanel: React.FC = () => {
           
 
           app.ticker.add((tick)=>{
-            const impact = DataBroker.instance.getImpact()
+            //const impact = DataBroker.instance.getImpact()
+            const impact = testing_impact;
             if(impact){
               stack.applyList(calculateImpactRadii(impact));
-              const cord = toMercator(impact.longLat.lamb,impact.longLat.phi);
+              const cord = toMercator(DEG_TO_RAD*impact.longLat.lamb,DEG_TO_RAD*impact.longLat.phi);
               stack.move(new Vector(cord.x,cord.y,0));
               stack.updateViewPort(viewport);
               stack.update(tick.deltaTime);
             }else{
-              stack.disable();
+              
             }
           })
   

@@ -4,7 +4,7 @@ import { Vector } from '../utils/Vector';
 import { POSITION_SCALE, RADIUS_SCALE, AU_IN_KM, MIN_PIXEL_RADIUS } from '../config/scales';
 import { gravitationalAccelerationAtPoint } from '../utils/orbitalMath';
 import { PLANETS } from '../data/bodies';
-import { MExGperAU3 } from '../utils/constants';
+import { MEarthxGperAU3 } from '../utils/constants';
 
 /**
  * Projectile launched with initial velocity; now influenced by gravity from PLANETS (same as Meteor).
@@ -35,7 +35,7 @@ export class Projectile implements UpdatableEntity {
         this.position.y,
         this.position.z,
         PLANETS,
-        MExGperAU3
+        MEarthxGperAU3
       );
       this.velocity = this.velocity.add(new Vector(ax, ay, az).scale(dt));
       this.position = this.position.add(this.velocity.scale(dt));

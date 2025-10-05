@@ -33,8 +33,8 @@ export const WorldMapPanel: React.FC = () => {
           const viewport = new Viewport({
             screenWidth: rect.width,
             screenHeight: rect.height,
-            worldWidth: 3000,
-            worldHeight: 3000,
+            worldWidth: 3500,
+            worldHeight: 3500,
             events: app.renderer.events,
             passiveWheel:false
           });
@@ -53,10 +53,7 @@ export const WorldMapPanel: React.FC = () => {
           map.position.set(rect.width/2,rect.height/2);
         
           // setup impact Stack
-
-          const stack = new ImpactStack("prediction",Vector.zero,[]);
-          stack.start(app);
-          
+          viewport.fit(true);
           
 
           app.ticker.add((tick)=>{
@@ -72,7 +69,6 @@ export const WorldMapPanel: React.FC = () => {
             }
           })
   
-          
           // Resize observer to keep canvas filling the half panel
           const ro = new ResizeObserver(entries => {
             if (disposed) return;
@@ -82,8 +78,8 @@ export const WorldMapPanel: React.FC = () => {
                   app.renderer.resize(width, height);
                   viewport.resize(width,height);
                   viewport.clampZoom({
-                    maxScale: 5,
-                    minScale:0.25
+                    maxScale:5,
+                    minScale:0.25,
                   })
                   viewport.moveCenter(width/2,height/2);
                   viewport.fit(true);

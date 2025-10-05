@@ -6,7 +6,7 @@ export const SUN_ORBIT = new Orbit(
     0.005,        // ≈ mittlere Entfernung vom Baryzentrum in AU
     0.0,          // Näherung: fast kreisförmig
     4332.59,      // ≈ Jupiters Umlaufzeit (Sonne-Jupiter-Baryzentrum-Schleife)
-    0x000000, 0.2, 1.0,
+    0xffd54f, 1.0, 1.0,
     1.304,        // gleiche Inklination wie Jupiter
     100.474,      // gleicher aufsteigender Knoten wie Jupiter
     274.255       // gleiche Argument-Periapsis wie Jupiter
@@ -166,6 +166,7 @@ export const MOON_ORBIT = new Orbit('moon-orbit', 384400 / 149597870.7, 0.0549, 
 
 // Aggregate array for iteration elsewhere
 export const ORBITS = [
+    SUN_ORBIT,
     MERCURY_ORBIT,
     VENUS_ORBIT,
     EARTH_MOON_SYSTEM_ORBIT,

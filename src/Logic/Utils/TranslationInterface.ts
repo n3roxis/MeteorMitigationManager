@@ -8,6 +8,7 @@ export const toMercator = (lambda:number,phi:number) =>{
 }
 
 export class Impact{
+    name:string
     mass:number
     density:number
     velocity:number
@@ -17,7 +18,8 @@ export class Impact{
     /**
      * longLat = longitude Latitude in a 2 tuple in named order
      */
-    constructor(mass:number,density:number,velocity:number,angle:number,longLat:{lamb: number, phi: number}){
+    constructor(name:string,mass:number,density:number,velocity:number,angle:number,longLat:{lamb: number, phi: number}){
+        this.name = name;
         this.mass = mass;
         this.density = density;
         this.velocity = velocity;

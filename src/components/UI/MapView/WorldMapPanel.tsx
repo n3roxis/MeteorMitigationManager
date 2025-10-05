@@ -9,11 +9,11 @@ import WorldMap from './resources/WorldMap.png';
 
 
 const waves = [
-            Shockwave.createAir(Vector.zero(),0),
-            Shockwave.createSeis(Vector.zero(),0),
-            Shockwave.createTherm(Vector.zero(),0)
+            Shockwave.createAir(Vector.zero,0),
+            Shockwave.createSeis(Vector.zero,0),
+            Shockwave.createTherm(Vector.zero,0)
           ]
-const stack = new ImpactStack("prediction",Vector.zero(),waves);
+const stack = new ImpactStack("prediction",Vector.zero,waves);
 
 // Placeholder world map panel to build on later
 export const WorldMapPanel: React.FC = () => {

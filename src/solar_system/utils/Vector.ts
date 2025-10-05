@@ -41,7 +41,7 @@ export class Vector {
     return new Vector(a.x - b.x, a.y - b.y, a.z - b.z);
   }
 
-  static zero(){
+  static get zero(){
     return new Vector(0,0,0);
   }
 

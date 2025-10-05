@@ -5,8 +5,8 @@ import { Vector } from "../../../solar_system/utils/Vector"
 
 export class Shockwave implements UpdatableEntity{
     id: string
-    position = new Vector(0,0,0)
-    off = new Vector(0,0,0)
+    position = Vector.zero
+    off = Vector.zero
     radius:number
     color = new Color('#00abff')
     opacity = 0.4;

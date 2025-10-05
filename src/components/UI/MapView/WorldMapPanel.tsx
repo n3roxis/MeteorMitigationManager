@@ -1,17 +1,19 @@
 import { Viewport } from 'pixi-viewport';
 import { Application, Assets, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
-import { calculateImpactRadii } from '../../../Logic/formulas';
-import '../../../Logic/formulas.test';
-import { testing_impact } from '../../../Logic/formulas.test';
-import { RadiusType, toMercator } from '../../../Logic/Utils/TranslationInterface';
+import { DataBroker, toMercator } from '../../../Logic/Utils/TranslationInterface';
 import { Vector } from '../../../solar_system/utils/Vector';
 import { ImpactStack } from '../../Graphics/Impact/ImpactStack';
-import DensityMap from './resources/DensityMap_edit.png';
+import { Shockwave } from '../../Graphics/Impact/Shockwave';
 import WorldMap from './resources/WorldMap.png';
 
 
-
+const waves = [
+            Shockwave.createAir(Vector.zero(),0),
+            Shockwave.createSeis(Vector.zero(),0),
+            Shockwave.createTherm(Vector.zero(),0)
+          ]
+const stack = new ImpactStack("prediction",Vector.zero(),waves);
 
 // Placeholder world map panel to build on later
 export const WorldMapPanel: React.FC = () => {
@@ -35,8 +37,8 @@ export const WorldMapPanel: React.FC = () => {
           const viewport = new Viewport({
             screenWidth: rect.width,
             screenHeight: rect.height,
-            worldWidth: 3500,
-            worldHeight: 3500,
+            worldWidth: rect.width,
+            worldHeight: rect.height,
             events: app.renderer.events,
             passiveWheel:false
           });
@@ -50,46 +52,24 @@ export const WorldMapPanel: React.FC = () => {
           // setup map background
           const tex = await Assets.load(WorldMap);
           const map = new Sprite(tex);
-          map.tint ='#7f7f7fff';
           viewport.addChild(map);
           map.anchor.set(0.5,0.5);
           map.position.set(rect.width/2,rect.height/2);
-
-          //Bevölkerungsdichtekarte
-          const density= await Assets.load(DensityMap);
-          const place= new Sprite(density);
-          place.tint ='#fdfaa6ff';
-          viewport.addChild(place);
-          place.anchor.set(0.5,0.5);
-          place.position.set(rect.width/2,rect.height/2);
-
-          
-          //TODO:Karten aufeinander passend strecken.
         
-          // setup impact stack (layers for impact visualization)
-          const stack = new ImpactStack('impact-stack', new Vector(0,0,0), []);
-          stack.start(app);
-          stack.updateViewPort(viewport);
-          viewport.fit(true);
+          // setup impact Stack
+          
 
           app.ticker.add((tick)=>{
-            //const impact = DataBroker.instance.getImpact()
-            const impact = testing_impact;
+            const impact = DataBroker.instance.getImpact()
             if(impact){
-              const radii = calculateImpactRadii(impact)
-              stack.applyList(radii,app);
               const cord = toMercator(impact.longLat.lamb,impact.longLat.phi);
               stack.move(new Vector(cord.x,cord.y,0));
-              stack.updateViewPort(viewport);
+              //TODO: Astrid stuff
               stack.update(tick.deltaTime);
-              const rad = stack.waves.find((w)=>{if (w.type == RadiusType.THERM_ACT){return w}})?.radius;
-              if(rad){
-                //const dead = GetPopulationinArea(cord.x,cord.y,rad);
-                //console.log(dead);
-              }
             }
           })
   
+          viewport.fit();
           // Resize observer to keep canvas filling the half panel
           const ro = new ResizeObserver(entries => {
             if (disposed) return;
@@ -97,15 +77,13 @@ export const WorldMapPanel: React.FC = () => {
                 const { width, height } = entry.contentRect;
                 if (width > 0 && height > 0) {
                   app.renderer.resize(width, height);
-                  viewport.resize(width,height);
-                  viewport.resize(width,height);
+                  viewport.resize(width,height,width,height);
                   viewport.clampZoom({
-                    maxScale:100,
-                    minScale:0.25,
-                  })
+                    maxWidth: width * 2,
+                    minWidth:width/3,
+                    minScale:0.48
+                  }).setZoom(0.48);
                   viewport.moveCenter(width/2,height/2);
-                  viewport.fit(true);
-                  viewport.fit(true);
                 }
               }
           });
@@ -128,11 +106,6 @@ export const WorldMapPanel: React.FC = () => {
   
     return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 };
-
-<<<<<<< Updated upstream
-=======
-//Fehlerhaft
-
 
 
 //onclick: set(x,y), get (r)/get(circleoffire)/get(circleofpressure)/get(seismiccircle) -> draw circle, collect pixel data within area, calculate range
@@ -206,8 +179,14 @@ const GetColorOfPixel=(context:CanvasRenderingContext2D,x:number,y:number):Array
     const rgb:Array<number>=[imageData[0],imageData[1],imageData[2]];
     return rgb;
 }
+const RichterToMercalli(EffectiveMagnitude:number):number=>{ 
+  if(EffectiveMagnitude>=5.5&&<=6) return 6;
+  if(EffectiveMagnitude>6&&EffectiveMagnitude<=6.5) return 7;
+  if(EffctiveMagnitude>6.5&&EffctiveMagnitude<=7) return 8;
+  if(EffectiveMagnitude>7&&EffectiveMagnitude<=7.5) return 9;
+  if(EffectiveMagnitude>7.5&&EffectiveMagnitude<=8) return 10;
+  if(EffectiveMagnitude>8&&EffectiveMagnitude<=9) return 11;
+  if(EffectiveMagnitude>9) return 12; 
+)
 
-
-
->>>>>>> Stashed changes
 export default WorldMapPanel;

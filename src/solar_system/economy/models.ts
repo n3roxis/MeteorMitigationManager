@@ -46,6 +46,15 @@ export interface InventoryItem {
   fuelTons?: number; // current onboard fuel
   fuelCapacityTons?: number; // maximum onboard fuel (initialized from activationFuelTons if defined)
   prevStateForLanding?: InventoryState; // remember original state (AT_LOCATION or ACTIVE_LOCATION) before landing prep
+  // Cached activation (Lambert) trajectory viability while in PREPPED_ACTIVATION for impactors
+  // This lets the UI disable the ACTIVATE button until a viable flight path is found.
+  activationTrajectory?: {
+    viable: boolean;            // true if at least one trajectory solution currently exists
+    checkedAt: number;          // ms timestamp of last solver attempt
+    flightTimeSec?: number;     // cached chosen path flight time
+    depVel?: [number,number,number];   // departure velocity vector components
+    meteorDelta?: [number,number,number]; // meteor delta-v to apply at impact
+  };
 }
 
 export type ActionKind =

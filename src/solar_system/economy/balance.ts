@@ -32,3 +32,11 @@ export function computeLaunchPrepDurationSec(massTons: number): number {
   const days = Math.ceil(LAUNCH_PREP_BASE_DAYS + massTons * LAUNCH_PREP_DAYS_PER_TON);
   return days * 24 * 3600;
 }
+
+// Impactor activation / Lambert solver related tunables
+// Nominal kinetic impactor flight time (seconds). Matches current placeholder mission duration used on activation.
+export const IMPACTOR_NOMINAL_FLIGHT_TIME_SEC = 120 * 24 * 3600; // 120 days baseline
+// Multipliers applied to nominal flight time when searching for trajectories.
+export const IMPACTOR_FLIGHT_TIME_VARIANTS = [1, 0.9, 1.1];
+// Throttle interval (ms) for polling Lambert solver during PREPPED_ACTIVATION state.
+export const ACTIVATION_SOLVER_POLL_INTERVAL_MS = 2000;

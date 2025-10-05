@@ -1,6 +1,12 @@
 import { GameEconomyState, ScheduledAction, ResearchId, BuildableType, LocationId } from './models';
 import { BLUEPRINT_INDEX, RESEARCH_INDEX } from './data';
+import { InterceptPath } from '../entities/Interceptor/InterceptPath';
+import { METEOR_UNO } from '../data/meteors';
+import { ENTITIES, registerEntity } from '../state/entities';
+import { InterceptorProjectile } from '../entities/InterceptorProjectile';
+import { Vector } from '../utils/Vector';
 import { computeLaunchCostFunds, computeLaunchPrepDurationSec } from './balance';
+import { resolveOriginEntityId } from '../utils/locationMap';
 
 let actionCounter = 0;
 const newActionId = () => `act-${++actionCounter}`;
@@ -143,14 +149,63 @@ export function activateItem(state: GameEconomyState, itemId: string) {
   const dur = Math.max(rawDur, 7*24*3600);
   if (!(item.state === 'AT_LOCATION' || item.state==='PREPPED_ACTIVATION')) throw new Error('Wrong state');
   if (item.state==='PREPPED_ACTIVATION') {
-    // Transition back to AT_LOCATION to reuse existing activation path
     item.state='AT_LOCATION';
   }
-  // Consume onboard craft fuel instead of location pool
-  if (fuel > 0) {
-    if ((item.fuelTons||0) < fuel) throw new Error('Insufficient onboard fuel');
-    // Reserve by subtracting immediately; activation finalization will not subtract from pools further.
-    item.fuelTons = (item.fuelTons||0) - fuel;
+  // TEMP: Fuel requirement bypass for impactor troubleshooting
+  if (!(bp.type==='small-impactor' || bp.type==='large-impactor' || bp.type==='giant-impactor')) {
+    if (fuel > 0) {
+      if ((item.fuelTons||0) < fuel) throw new Error('Insufficient onboard fuel');
+      item.fuelTons = (item.fuelTons||0) - fuel;
+    }
+  }
+  // Immediate activation path for impactors if cached trajectory is viable
+  if (bp.type==='small-impactor' || bp.type==='large-impactor' || bp.type==='giant-impactor') {
+    const cached: any = (item as any).activationTrajectory;
+    const hasCache = cached && cached.viable && cached.depVel && cached.meteorDelta && cached.flightTimeSec;
+    if (hasCache && item.location) {
+      try {
+        console.log('[Impactor Immediate Activation] Using cached trajectory for', item.id, 'cache=', cached);
+        // set transfer state immediately and spawn projectile (same as finalize path logic)
+        const origin = item.location as LocationId;
+        const missionDuration = cached.flightTimeSec as number; // approximate mission length to flight time
+        item.state = 'IN_TRANSFER';
+        const nowMs = Date.now();
+        item.transfer = { origin, destination: 'IMPACT' as any, departureTime: state.timeSec, arrivalTime: state.timeSec + missionDuration, fuelCost: 0, realDepartureMs: nowMs, realArrivalMs: nowMs + missionDuration*1000 };
+  const originEntId = resolveOriginEntityId(item.location);
+        const originEnt: any = ENTITIES.find(e=> (e as any).id === originEntId);
+        const meteorEnt: any = ENTITIES.find(e=> (e as any).id === METEOR_UNO.id);
+        console.log('[Impactor Immediate Activation] originEntId=', originEntId, 'originEntFound=', !!originEnt, 'meteorFound=', !!meteorEnt);
+        if (originEnt && meteorEnt) {
+          const depVel = new Vector(cached.depVel[0], cached.depVel[1], cached.depVel[2]);
+          const meteorDelta = new Vector(cached.meteorDelta[0], cached.meteorDelta[1], cached.meteorDelta[2]);
+          console.log('[Impactor Immediate Activation] Spawning projectile', { depVel, meteorDelta, flightTime: cached.flightTimeSec });
+          const proj = new InterceptorProjectile(
+            `imp-proj-${item.id}`,
+            new Vector(originEnt.position.x, originEnt.position.y, originEnt.position.z),
+            depVel,
+            cached.flightTimeSec,
+            meteorEnt.id,
+            meteorDelta,
+            item.id,
+            ()=> {
+              const idx = state.inventory.findIndex(iv=>iv.id===item.id);
+              if (idx>=0) state.inventory.splice(idx,1);
+              console.log('[Impactor Immediate Activation] Impact complete; removed inventory item', item.id);
+            }
+          );
+          registerEntity(proj);
+          console.log('[Impactor Immediate Activation] Projectile registered. ENTITIES length now', ENTITIES.length);
+        } else {
+          console.warn('[Impactor Immediate Activation] Missing origin or meteor entity, falling back to scheduled activation');
+          push(state, { id: newActionId(), kind: 'ACTIVATE', startTime: state.timeSec, endTime: state.timeSec + dur, payload: { itemId, fuel } });
+        }
+      } catch(err) {
+        console.warn('[Impactor Immediate Activation] Cache spawn failed, fallback schedule', err);
+        push(state, { id: newActionId(), kind: 'ACTIVATE', startTime: state.timeSec, endTime: state.timeSec + dur, payload: { itemId, fuel } });
+      }
+      return; // done
+    }
+    // If no viable cache, proceed with scheduled activation (will attempt solver on finalize)
   }
   push(state, { id: newActionId(), kind: 'ACTIVATE', startTime: state.timeSec, endTime: state.timeSec + dur, payload: { itemId, fuel } });
 }
@@ -260,6 +315,69 @@ function finalizeAction(state: GameEconomyState, act: ScheduledAction) {
             it.state = 'IN_TRANSFER';
             const nowMs = Date.now();
             it.transfer = { origin, destination: 'IMPACT' as any, departureTime: state.timeSec, arrivalTime: state.timeSec + duration, fuelCost: 0, realDepartureMs: nowMs, realArrivalMs: nowMs + duration*1000 };
+              // Lambert-based projectile spawn
+              try {
+                // Prefer a precomputed cached activation trajectory if present (from PREPPED_ACTIVATION polling)
+                const cached = (it as any).activationTrajectory;
+                let usedCache = false;
+                // Determine start position entity id mapping from location
+                const originEntId = resolveOriginEntityId(it.location);
+                const originEnt: any = ENTITIES.find(e=> (e as any).id === originEntId);
+                const meteorEnt: any = ENTITIES.find(e=> (e as any).id === METEOR_UNO.id);
+                if (originEnt && meteorEnt) {
+                  if (cached && cached.viable && cached.depVel && cached.meteorDelta && cached.flightTimeSec) {
+                    // Use cached solution
+                    const depVel = { x: cached.depVel[0], y: cached.depVel[1], z: cached.depVel[2] };
+                    const meteorDelta = { x: cached.meteorDelta[0], y: cached.meteorDelta[1], z: cached.meteorDelta[2] };
+                    const proj = new InterceptorProjectile(
+                      `imp-proj-${it.id}`,
+                      new Vector(originEnt.position.x, originEnt.position.y, originEnt.position.z),
+                      new Vector(depVel.x, depVel.y, depVel.z),
+                      cached.flightTimeSec,
+                      meteorEnt.id,
+                      new Vector(meteorDelta.x, meteorDelta.y, meteorDelta.z),
+                      it.id,
+                      ()=> {
+                        const idx = state.inventory.findIndex(iv=>iv.id===it.id);
+                        if (idx>=0) state.inventory.splice(idx,1);
+                      }
+                    );
+                    registerEntity(proj);
+                    usedCache = true;
+                  }
+                  if (!usedCache) {
+                    const dt = duration; // fallback time-of-flight seconds
+                    const interceptor = new InterceptPath(`solver-${it.id}`, originEnt, meteorEnt, false);
+                    const candidates = [dt, dt*0.9, dt*1.1];
+                    const massGuess = (it.massTons||1) * 1000; // simple scaling
+                    const found = interceptor.findTrajectories(candidates, massGuess);
+                    if (found>0) {
+                      interceptor.chooseTrajectory(0); // pick first for now (could choose best delta-v)
+                      const path = interceptor.chosenPath;
+                      if (path) {
+                        const depVel = path.departureVelocity;
+                        const meteorDelta = path.meteorVelocityChange || path.arrivalDeltaVelocity;
+                        const proj = new InterceptorProjectile(
+                          `imp-proj-${it.id}`,
+                          new Vector(originEnt.position.x, originEnt.position.y, originEnt.position.z),
+                          new Vector(depVel.x, depVel.y, depVel.z),
+                          path.flightTime,
+                          meteorEnt.id,
+                          new Vector(meteorDelta.x, meteorDelta.y, meteorDelta.z),
+                          it.id,
+                          ()=> {
+                            const idx = state.inventory.findIndex(iv=>iv.id===it.id);
+                            if (idx>=0) state.inventory.splice(idx,1);
+                          }
+                        );
+                        registerEntity(proj);
+                      }
+                    }
+                  }
+                }
+              } catch(err) {
+                console.warn('[Impactor Activation] Lambert spawn failed', err);
+              }
           }
         } else if (bp.type === 'laser-platform') {
           if (it.state === 'AT_LOCATION') it.state = 'ACTIVE_LOCATION';

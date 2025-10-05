@@ -129,7 +129,7 @@ export const BLUEPRINTS: BuildableBlueprint[] = [
     buildCostFunds: 8,
     // Fabrication time ~50 days
     buildDurationSec: 50 * 24 * 3600,
-    massTons: 25,
+  massTons: 1, // reduced dry mass from 25 to 1 for balance tweak
     launchCostFunds: 2.2,
     // Tanker carries large internal fuel for redistribution; activation reserves fuel for prepping transfer manifolds
     activationFuelTons: 12,

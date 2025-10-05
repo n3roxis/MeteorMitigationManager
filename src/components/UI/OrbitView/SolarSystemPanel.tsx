@@ -22,6 +22,7 @@ import {Projectile} from "../../../solar_system/entities/Projectile.ts";
 
 
 let interceptor: InterceptPath | undefined = undefined; // TEMPORARY
+export let GLOBAL_PIXI_APP: Application | null = null;
 let trajectoryIndex: number = 0;
 let trajectoryCount: number = 0;
 let projectileCounter: number = 0;
@@ -38,6 +39,7 @@ export const SolarSystemPanel = () => {
 
     let disposed = false;
   const app = new Application();
+  GLOBAL_PIXI_APP = app;
   // Performance overlay DOM element
   const perfDiv = document.createElement('div');
   perfDiv.style.position = 'absolute';
@@ -58,7 +60,8 @@ export const SolarSystemPanel = () => {
     // Track last entity count to start newly added entities (e.g., projectiles)
     let lastEntityCount = 0;
   // Camera mode toggle (press 'c' to switch between barycenter and sun)
-  let cameraMode: 'barycenter' | 'sun' = 'barycenter';
+  let cameraMode: 'barycenter' | 'sun' | 'projectile' = 'projectile';
+  let lastProjectileId: string | null = null;
 
     // One-time initialization
     const init = async () => {
@@ -193,6 +196,29 @@ export const SolarSystemPanel = () => {
                 // Camera update after physics
                 if (cameraMode === 'sun' && SUN) {
                     scene.position.set(centerX, centerY);
+                } else if (cameraMode === 'projectile') {
+                    // Track most recently spawned InterceptorProjectile or generic Projectile
+                    const projectiles = ENTITIES.filter(e=>{
+                      const name = (e as any).constructor && (e as any).constructor.name;
+                      return name === 'InterceptorProjectile' || name === 'Projectile';
+                    }) as any[];
+                    if (projectiles.length) {
+                      // Update lastProjectileId if new ones appear
+                      if (!lastProjectileId || !projectiles.find(p=>p.id===lastProjectileId)) {
+                        // pick most recently added (last in ENTITIES intersection)
+                        lastProjectileId = projectiles[projectiles.length-1].id;
+                      }
+                      const target = projectiles.find(p=>p.id===lastProjectileId) || projectiles[projectiles.length-1];
+                      const tx = target.position.x * POSITION_SCALE;
+                      const ty = target.position.y * POSITION_SCALE;
+                      scene.position.set(centerX - tx, centerY - ty);
+                    } else if (EARTH_MOON_BARYCENTER) {
+                      const tx = EARTH_MOON_BARYCENTER.position.x * POSITION_SCALE;
+                      const ty = EARTH_MOON_BARYCENTER.position.y * POSITION_SCALE;
+                      scene.position.set(centerX - tx, centerY - ty);
+                    } else {
+                      scene.position.set(centerX, centerY);
+                    }
                 } else if (EARTH_MOON_BARYCENTER) {
                     const tx = EARTH_MOON_BARYCENTER.position.x * POSITION_SCALE;
                     const ty = EARTH_MOON_BARYCENTER.position.y * POSITION_SCALE;
@@ -266,7 +292,8 @@ export const SolarSystemPanel = () => {
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'c' || e.key === 'C') {
-        cameraMode = cameraMode === 'barycenter' ? 'sun' : 'barycenter';
+        // Cycle camera modes: barycenter -> sun -> projectile -> barycenter
+        cameraMode = cameraMode === 'barycenter' ? 'sun' : (cameraMode === 'sun' ? 'projectile' : 'barycenter');
       }
 
       if (e.key === 'v' || e.key === 'V') {

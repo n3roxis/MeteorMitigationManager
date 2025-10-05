@@ -144,6 +144,14 @@ export function transferFuelBetweenCraft(state: GameEconomyState, tankerId: stri
 export function activateItem(state: GameEconomyState, itemId: string) {
   const item = state.inventory.find(i => i.id === itemId); if (!item) throw new Error('Missing');
   const bp = BLUEPRINT_INDEX.get(item.blueprint)!;
+  // Instant toggle path for space telescope (no scheduling, no fuel, only at L2)
+  if (bp.type === 'space-telescope') {
+    if (!(item.state === 'AT_LOCATION' || item.state === 'PREPPED_ACTIVATION')) throw new Error('Wrong state');
+    if (item.location !== 'SE_L2') throw new Error('Must be at L2');
+    if (item.state==='PREPPED_ACTIVATION') item.state='AT_LOCATION';
+    item.state = 'ACTIVE_LOCATION';
+    return;
+  }
   const fuel = bp.activationFuelTons || 0;
   const rawDur = bp.activationDurationSec || 7*24*3600;
   const dur = Math.max(rawDur, 7*24*3600);
@@ -213,6 +221,12 @@ export function activateItem(state: GameEconomyState, itemId: string) {
 export function deactivateItem(state: GameEconomyState, itemId: string) {
   const item = state.inventory.find(i => i.id === itemId); if (!item) throw new Error('Missing');
   if (item.state !== 'ACTIVE_LOCATION') throw new Error('Not active');
+  const bp = BLUEPRINT_INDEX.get(item.blueprint)!;
+  if (bp.type === 'space-telescope') {
+    // Instant off
+    item.state = 'AT_LOCATION';
+    return;
+  }
   // Deactivation we will treat as fast operational change but still scheduled (minimum 7 days for consistency)
   const dur = 7 * 24 * 3600;
   push(state, { id: newActionId(), kind: 'DEACTIVATE', startTime: state.timeSec, endTime: state.timeSec + dur, payload: { itemId } });
@@ -381,6 +395,9 @@ function finalizeAction(state: GameEconomyState, act: ScheduledAction) {
           }
         } else if (bp.type === 'laser-platform') {
           if (it.state === 'AT_LOCATION') it.state = 'ACTIVE_LOCATION';
+        } else if (bp.type === 'space-telescope') {
+          // Only activates (turns on instruments) if currently stationed at SE_L2
+          if (it.state === 'AT_LOCATION' && it.location === 'SE_L2') it.state = 'ACTIVE_LOCATION';
         }
       }
       break;

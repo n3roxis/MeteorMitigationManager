@@ -4,7 +4,12 @@ import React, { useEffect, useRef } from 'react';
 import { calculateImpactRadii } from '../../../Logic/formulas';
 import '../../../Logic/formulas.test';
 import { testing_impact } from '../../../Logic/formulas.test';
+<<<<<<< Updated upstream
 import { toMercator } from '../../../Logic/Utils/TranslationInterface';
+=======
+import { GetPopulationinArea } from '../../../Logic/population';
+import { RadiusType, toMercator } from '../../../Logic/Utils/TranslationInterface';
+>>>>>>> Stashed changes
 import { Vector } from '../../../solar_system/utils/Vector';
 import { ImpactStack } from '../../Graphics/Impact/ImpactStack';
 import DensityMap from './resources/DensityMap.png';
@@ -50,12 +55,20 @@ export const WorldMapPanel: React.FC = () => {
           // setup map background
           const tex = await Assets.load(WorldMap);
           const map = new Sprite(tex);
+          map.tint ='#ffffffff';
           viewport.addChild(map);
           map.anchor.set(0.5,0.5);
           map.position.set(rect.width/2,rect.height/2);
+
           //Bevölkerungsdichtekarte
           const density= await Assets.load(DensityMap);
           const place= new Sprite(density);
+          place.tint ='#ffffffff';
+          viewport.addChild(place);
+          place.anchor.set(0.5,0.5);
+          place.position.set(rect.width/2,rect.height/2);
+
+          
           //TODO:Karten aufeinander passend strecken.
         
           // setup impact stack (layers for impact visualization)
@@ -69,11 +82,24 @@ export const WorldMapPanel: React.FC = () => {
             //const impact = DataBroker.instance.getImpact()
             const impact = testing_impact;
             if(impact){
+<<<<<<< Updated upstream
               stack.applyList(calculateImpactRadii(impact));
               const cord = toMercator(DEG_TO_RAD*impact.longLat.lamb,DEG_TO_RAD*impact.longLat.phi);
+=======
+              const radii = calculateImpactRadii(impact)
+              stack.applyList(radii);
+              const cord = toMercator(impact.longLat.lamb,impact.longLat.phi);
+>>>>>>> Stashed changes
               stack.move(new Vector(cord.x,cord.y,0));
               stack.updateViewPort(viewport);
               stack.update(tick.deltaTime);
+
+              const rad = stack.waves.find((w)=>{if (w.type == RadiusType.THERM_ACT){return w}})?.radius;
+              if(rad){
+                const dead = GetPopulationinArea(cord.x,cord.y,rad);
+                //console.log(dead);
+              }
+                
             }else{
               
             }
@@ -117,82 +143,5 @@ export const WorldMapPanel: React.FC = () => {
   
     return <div ref={containerRef} style={{ width: '100%', height: '100%' }} />;
 };
-
-//Fehlerhaft
-
-
-
-//onclick: set(x,y), get (r)/get(circleoffire)/get(circleofpressure)/get(seismiccircle) -> draw circle, collect pixel data within area, calculate range
-const GetPopulationinArea=(context:CanvasRenderingContext2D,x:number,y:number,radius:number):Array<number>=>{
-    const population:Array<number>=[];
-    let ly=0;
-    let my=0;
-    let ty=0;
-    let O=0;
-    let or=0;
-    let r=0;
-    let dr=0;
-    let m=0;
-    for(let i=-radius;i<=radius;i++){
-        for(let j=-radius;j<=radius;j++){
-            if(i*i+j*j<=radius*radius){
-                const color=GetColorOfPixel(context,x+i,y+j);
-                
-                switch (color.join(' ')) {
-                  case '255 255 190': 
-                  ly++;
-                  
-                  break;
-                  case '255 255 115':
-                  my++;
-                  
-                  break;
-                  case '255 255 0':
-                  ty++;
-                  
-                  break;
-                  case '255 170 0':
-                  O++;
-                  
-                  break;
-                  case '255 102 0':
-                  or++;
-                  
-                  break;  
-                  case '255 0 0':
-                  r++;
-                  
-                  break;  
-                  case '204 0 0':                    
-                  dr++;
-                  
-                  break;  
-                  case '115 0 0':
-                  m++;
-                  
-                    break;
-                
-                  default:
-                    break;
-                }
-                
-            }
-        }
-      }
-      console.log(ly,my,ty,O,or,r,dr,m);
-
-      const PopulationLB=ly+my*6+ty*26+O*51+or*101+r*501+dr*2501+m*5001;
-      const PopulationUB=ly*5+my*25+ty*50+O*100+or*500+r*2500+dr*5000+m*185000;
-      population.push(PopulationLB,PopulationUB);
-      return population;
-}
-
-const GetColorOfPixel=(context:CanvasRenderingContext2D,x:number,y:number):Array<number> =>
-{
-    const imageData:Uint8ClampedArray=context.getImageData(x,y,1,1).data;
-    const rgb:Array<number>=[imageData[0],imageData[1],imageData[2]];
-    return rgb;
-}
-
 
 export default WorldMapPanel;

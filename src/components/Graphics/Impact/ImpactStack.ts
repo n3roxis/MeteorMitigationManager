@@ -67,7 +67,6 @@ export class ImpactStack implements UpdatableEntity{
     }
 
     applyList(data:Radius[]){
-        console.log(this.waves)
         this.waves = this.waves.filter((w)=>{
             if(w.type == RadiusType.SEIS){
                 w.destroy()
@@ -75,19 +74,16 @@ export class ImpactStack implements UpdatableEntity{
                 return w;
             }
         })
-        console.log(this.waves)
         for(let r of data){
             const radius = this.convertRadius(r.center,r.radius);
             switch(r.type){
                 case RadiusType.THERM_VIS: {let item = this.contains(r.type); if (item){
-                    console.log(item.color)
                     item.radius = radius;
                     item.color = THERM_VIS_COL;
                 }else{
                     const wave = Shockwave.createThermVis(radius);
                     wave.color = THERM_VIS_COL;
                     this.waves.push(wave);
-                    console.log(wave.color)
                 }}break;
                 case RadiusType.THERM_ACT:{let item = this.contains(r.type); if (item){
                     item.radius = radius;

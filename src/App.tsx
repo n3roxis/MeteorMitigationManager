@@ -1,17 +1,17 @@
+import React from 'react';
 import { AsteroidInfo } from './components/UI/Hud/AsteroidInfo';
-import ImpactSimulationPanel from './components/UI/ImpactSimulation/ImpactSimulationPanel';
-import { PANEL_BG, APP_BG } from './components/UI/theme';
 import WorldMapPanel from './components/UI/MapView/WorldMapPanel';
-import SolarSystemPanel from './components/UI/OrbitView/SolarSystemPanel';
 import EconomyPanel from './components/UI/OrbitView/EconomyPanel';
+import SolarSystemPanel from './components/UI/OrbitView/SolarSystemPanel';
+import { METEOR_UNO } from './solar_system/data/meteors';
+import { activateItem, deorbitItem, finalizePreparedLaunch } from './solar_system/economy/actions';
+import { IMPACTOR_FLIGHT_TIME_VARIANTS, IMPACTOR_NOMINAL_FLIGHT_TIME_SEC } from './solar_system/economy/balance';
 import { economyState } from './solar_system/economy/state';
-import { finalizePreparedLaunch, deorbitItem, activateItem } from './solar_system/economy/actions';
-import { addMitigationEvent } from './solar_system/impact/mitigationHistory';
-import { IMPACTOR_NOMINAL_FLIGHT_TIME_SEC, IMPACTOR_FLIGHT_TIME_VARIANTS } from './solar_system/economy/balance';
 import { InterceptPath } from './solar_system/entities/Interceptor/InterceptPath';
 import { ENTITIES } from './solar_system/state/entities';
-import { METEOR_UNO } from './solar_system/data/meteors';
-import React from 'react';
+import ImpactSimulationPanel from './components/UI/ImpactSimulation/ImpactSimulationPanel';
+import { APP_BG, PANEL_BG } from './components/UI/theme';
+import { addMitigationEvent } from './solar_system/impact/mitigationHistory';
 
 // Simple countdown component using assumed total meteor flight (365 days) minus elapsed sim time (from economyState.timeSec)
 const TOTAL_METEOR_FLIGHT_DAYS = 365; // matches meteors.ts flightDays

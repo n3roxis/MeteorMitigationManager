@@ -223,22 +223,32 @@ export function calculateImpactRadii(impact: Impact): Array<Radius> {
     const velocity_impactor = impact.velocity;
     const density_impactor = impact.density;
     const angle_impactor = impact.angle;
+    console.log(`Impactor diameter: ${diameter_impactor.toFixed(2)} m`);
+    console.log(`Impactor velocity: ${velocity_impactor.toFixed(2)} m/s`);
+    console.log(`Impactor density: ${density_impactor.toFixed(2)} kg/m^3`);
+    console.log(`Impactor angle: ${angle_impactor.toFixed(2)} degrees`);
 
     // Calculate impact energy
     const energy = impactEnergy(velocity_impactor, density_impactor, diameter_impactor);
+    console.log(`Impact energy: ${energy.toExponential(3)}`);
     // Crater diameter
     const crater_diam = craterDiameter(target_density, density_impactor, diameter_impactor, velocity_impactor, angle_impactor, target_gravity);
+    console.log(`Crater diameter: ${crater_diam.toFixed(2)} m`);
     // Depth
     const crater_depth = craterDepth(crater_diam);
+    console.log(`Crater depth: ${crater_depth.toFixed(2)} m`);
     // Fireball radius
     const fireball_rad = fireballRadius(energy);
+    console.log(`Fireball radius: ${fireball_rad.toFixed(2)} m`);
     // Burning distance for Clothing
     const clothing_distance = burningDistance(energy, luminous_efficiency, 'Clothing');
+    console.log(`Clothing ignition distance: ${clothing_distance.toFixed(2)} m`);
     // Seismic radii for intensities 4 to 12
     const magnitude = seismicMagnitude(energy);
     const seismic_radii = [];
     for (let intensity = 4; intensity <= 12; intensity++) {
         const radius = seismicIntensityDistance(magnitude, intensity);
+        console.log(`Seismic radius for intensity ${intensity}: ${radius.toFixed(2)} m`);
         seismic_radii.push({ type: intensity, value: radius, intensity });
     }
 

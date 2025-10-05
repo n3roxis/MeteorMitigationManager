@@ -2,7 +2,10 @@ import React from 'react';
 import { economyState } from '../../../solar_system/economy/state';
 import { RESEARCH_DEFS, BLUEPRINTS, isUnlocked } from '../../../solar_system/economy/data';
 import { startResearch, startBuild, transferFuelBetweenCraft, prepareLanding, abortPrep, transferObject, launchItem, abortPrep as abortLaunchPrep, prepareActivation, activateItem } from '../../../solar_system/economy/actions';
+import { LaserWeapon } from '../../../solar_system/entities/LaserWeapon';
+import { ENTITIES, registerEntity as registerSimEntity } from '../../../solar_system/state/entities';
 import { GameEconomyState, LocationId } from '../../../solar_system/economy/models';
+import { computeLaunchCostFunds, computeLaunchPrepDurationSec } from '../../../solar_system/economy/balance';
 
 // Lightweight subscription (animation frame) to keep progress bars and timers live
 const listeners = new Set<() => void>();
@@ -28,7 +31,7 @@ function InventoryRow(props:{ it:any; isGround:boolean; locId:LocationId; setCom
   // Global single-prep lock (launch, landing, activation)
   const globalPrepLock = economyState.actions.some(a=> (a.kind==='LAUNCH' || a.kind==='LAND' || a.kind==='ACTIVATE_PREP' || a.kind==='ABORT_PREP') && a.status==='PENDING')
     || economyState.inventory.some(i=> i.state==='PREPPED_LAUNCH' || i.state==='PREPPED_LANDING' || i.state==='PREPPED_ACTIVATION');
-  const tag = it.state === 'ACTIVE_LOCATION' ? ' (A)' : '';
+  const tag = '';// removed active suffix per request
   const activeColor = it.state === 'ACTIVE_LOCATION' ? '#2ea84d' : (it.state === 'IN_TRANSFER' ? '#cfa640' : '#d4dde4');
   const clickable = !isGround; // space items enter command panel
   return (
@@ -48,12 +51,12 @@ function InventoryRow(props:{ it:any; isGround:boolean; locId:LocationId; setCom
         cursor: clickable ? 'pointer' : 'default'
       }}>
       <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', position:'relative' }}>
-        <div style={{ fontSize:10, fontWeight:600, letterSpacing:0.3, color:activeColor, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', position:'relative' }}>{bp.name}{tag}
+  <div style={{ fontSize:10, fontWeight:600, letterSpacing:0.3, color:activeColor, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', position:'relative' }}>{bp.name}{tag}
           {it.state==='IN_TRANSFER' && it.transfer && (
             <span style={{ marginLeft:4, fontSize:9, fontWeight:600, color:'#cfa640' }}>→ { (it.transfer as any).destination==='IMPACT' ? 'Impact' : it.transfer.destination }</span>
           )}
         </div>
-  {( (bp as any).type!=='tsunami-dam-module') && !isGround && it.fuelCapacityTons !== undefined && it.state!=='IN_TRANSFER' && (()=> {
+  {( (bp as any).type!=='tsunami-dam-module') && (bp.type!=='orbital-habitat') && !isGround && it.fuelCapacityTons !== undefined && it.state!=='IN_TRANSFER' && (()=> {
           const fuelNow = (it.fuelTons||0); const cap = (it.fuelCapacityTons||1); const ratio = Math.max(0, Math.min(1, fuelNow/cap));
           const r = Math.round(0x40 + (0xff-0x40)*ratio); const g = Math.round(0x29 + (0x9b-0x29)*ratio); const b = Math.round(0x15 + (0x2f-0x15)*ratio);
           const color = `rgb(${r},${g},${b})`;
@@ -102,14 +105,45 @@ function InventoryRow(props:{ it:any; isGround:boolean; locId:LocationId; setCom
                 className='progress-btn'
                 style={{ flex:1, padding:'3px 4px', borderRadius:3, border:'1px solid '+(isPrepped? '#7a2d2d':'#345061'), background:isPrepped? '#411b1b':'#25323e', color:isPrepped? '#ff7878':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:disabled? 'default':'pointer', fontSize:9, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', overflow:'hidden', opacity:disabled?0.6:1 }}>
                 { ((isPrepping && !isPrepped) || isAborting) && <div className='progress-fill' style={{ width:(pct*100)+'%', background:isPrepped? 'linear-gradient(90deg,#ff9898,#ff5a5a)' : 'linear-gradient(90deg,#4aa9ff,#1485ff)', opacity:0.85 }} /> }
-                <span style={{ minWidth:20, textAlign:'left' }} className='label-layer'>{isPrepped? '' : (isPrepping? '' : '7d')}</span>
+                {(()=>{ const wet = it.massTons + (it.fuelCapacityTons||0); return (
+                  <span style={{ minWidth:20, textAlign:'left' }} className='label-layer'>{isPrepped? '' : (isPrepping? '' : (Math.ceil(computeLaunchPrepDurationSec(wet)/86400)+'d'))}</span>
+                ); })()}
                 <span style={{ flex:1, textAlign:'center' }} className='label-layer'>{label}</span>
-                <span style={{ minWidth:30, textAlign:'right', opacity:isPrepped?0:1 }} className='label-layer'>{isPrepped? '' : (bp.launchCostFunds?.toFixed(2)+'B')}</span>
+                {(()=>{ const wet = it.massTons + (it.fuelCapacityTons||0); return (
+                  <span style={{ minWidth:30, textAlign:'right', opacity:isPrepped?0:1 }} className='label-layer'>{isPrepped? '' : (computeLaunchCostFunds(wet).toFixed(2)+'B')}</span>
+                ); })()}
               </button>
             </div>
           );
         })()}
         {/* Dam modules have no launch button; no badge shown per request */}
+        {/* Inline OFF toggle for active laser platform */}
+        {!isGround && bp.type==='laser-platform' && it.state==='ACTIVE_LOCATION' && (()=> {
+          const meteor = ENTITIES.find(e => (e as any).id && (e as any).id.startsWith('meteor')) as any;
+          const allowedLocs: Record<string,string> = { 'SE_L1':'sun-earth-L1','SE_L3':'sun-earth-L3','SE_L4':'sun-earth-L4','SE_L5':'sun-earth-L5' };
+            const loc = it.location as string | undefined;
+            const sourceId = loc ? allowedLocs[loc] : undefined;
+          const beamId = 'laser-beam-' + it.id;
+          let beam = ENTITIES.find(e => (e as any).id === beamId) as any as LaserWeapon | undefined;
+          const canToggle = !!beam || (!!meteor && !!sourceId);
+          const onClick = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            if (beam && (beam as any).destroy && sourceId && (beam as any).sourceId !== sourceId) { (beam as any).destroy(); beam = undefined; }
+            if (!beam && meteor && sourceId) { beam = new LaserWeapon(beamId, sourceId, meteor.id); registerSimEntity(beam); }
+            if (beam) { beam.setActive(false); }
+            it.state = 'AT_LOCATION';
+            notify();
+          };
+          return (
+            <div style={{ marginTop:4, display:'flex', gap:4 }}>
+              <button onClick={onClick} disabled={!canToggle} className='progress-btn' style={{ flex:1, padding:'3px 4px', borderRadius:3, border:'1px solid #365036', background:'#1f2f1f', color:'#7dff7d', fontWeight:600, letterSpacing:0.35, cursor:canToggle? 'pointer':'default', fontSize:9, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', overflow:'hidden', opacity:canToggle?1:0.55 }}>
+                <span style={{ minWidth:20, textAlign:'left' }} className='label-layer'></span>
+                <span style={{ flex:1, textAlign:'center' }} className='label-layer'>Turn Off</span>
+                <span style={{ minWidth:30, textAlign:'right', opacity:0.6 }} className='label-layer'></span>
+              </button>
+            </div>
+          );
+        })()}
         {!isGround && (bp.type==='small-impactor'||bp.type==='large-impactor'||bp.type==='giant-impactor') && (()=> {
           // Inline display ONLY for Abort Activation (after prep completes or during abort). Prep lives in command submenu.
           if (it.state==='IN_TRANSFER') return null;
@@ -262,7 +296,6 @@ export const EconomyPanel: React.FC = () => {
   const activationDurationDays = bp?.activationDurationSec ? Math.max(bp.activationDurationSec, 7*24*3600)/86400 : 7; // ensure min week
   const canActivate = item && item.state==='AT_LOCATION' && bp && activationFuel <= (item.fuelTons||0);
       // Lagrange point list for transfer menu
-  const lagrangePoints = ['SE_L1','SE_L2','SE_L4','SE_L5'];
   const isTanker = bp?.type === 'orbital-tanker';
   // Tanker specific: entering transfer fuel selection mode instead of generic activation
   const otherCraftSameLoc = item && item.location ? state.inventory.filter(o => o.id!==item.id && o.location===item.location && (o.state==='AT_LOCATION' || o.state==='ACTIVE_LOCATION')) : [];
@@ -287,7 +320,7 @@ export const EconomyPanel: React.FC = () => {
               {/* Info panel: name, masses single line, large fuel bar */}
               <div style={{ background:'#1b2630', border:'1px solid #31414f', borderRadius:4, padding:'4px 6px 5px', display:'flex', flexDirection:'column', gap:6 }}>
                 <div style={{ fontSize:11, fontWeight:600, letterSpacing:0.45, textAlign:'center', color:'#d8e3ea' }}>{bp.name}</div>
-                {(() => {
+                {bp.type==='orbital-habitat' ? null : (() => {
                   const fuelNow = (item.fuelTons||0);
                   const cap = (item.fuelCapacityTons||0);
                   const wet = bp.massTons + fuelNow;
@@ -332,15 +365,63 @@ export const EconomyPanel: React.FC = () => {
                     }}
                     style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isPrepped? '#7a2d2d':'#345061'), background:isPrepped? '#411b1b':'#25323e', color:isPrepped? '#ff7878':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:disabled? 'default':'pointer', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', overflow:'hidden', opacity:disabled?0.6:1 }}>
                     { (isPrepping && !isPrepped) || isAborting ? <div className='progress-fill' style={{ width:(pct*100)+'%', background:isPrepped? 'linear-gradient(90deg,#ff9898,#ff5a5a)' : 'linear-gradient(90deg,#4aa9ff,#1485ff)', opacity:0.8 }} /> : null }
-                    <span style={{ minWidth:28, textAlign:'left' }} className='label-layer'>{isPrepped? (isAborting? '' : '') : (isPrepping? '' : '7d')}</span>
+                    {(()=>{ const wet = item.massTons + (item.fuelCapacityTons||0); return (
+                      <span style={{ minWidth:28, textAlign:'left' }} className='label-layer'>{isPrepped? (isAborting? '' : '') : (isPrepping? '' : (Math.ceil(computeLaunchPrepDurationSec(wet)/86400)+'d'))}</span>
+                    ); })()}
                     <span style={{ flex:1, textAlign:'center' }} className='label-layer'>{label}</span>
-                    <span style={{ minWidth:38, textAlign:'right', opacity: isPrepped? 0 : 1 }} className='label-layer'>{isPrepped? '' : (bp.launchCostFunds?.toFixed(2)+'B')}</span>
+                    {(()=>{ const wet = item.massTons + (item.fuelCapacityTons||0); return (
+                      <span style={{ minWidth:38, textAlign:'right', opacity: isPrepped? 0 : 1 }} className='label-layer'>{isPrepped? '' : (computeLaunchCostFunds(wet).toFixed(2)+'B')}</span>
+                    ); })()}
                   </button>
                 );
               })() : null}
               {/* No launch controls or hint for dam module */}
               {/* Activation / Prep Activation logic */}
-              {(() => {
+              {(bp.type==='orbital-habitat') ? null : (bp.type==='laser-platform' ? (()=>{
+                // Laser platform: On/Off toggle allowed only at L1, L3, L4, L5. Beam source follows current lagrange location.
+                const isActive = item.state === 'ACTIVE_LOCATION';
+                const meteor = ENTITIES.find(e => (e as any).id && (e as any).id.startsWith('meteor')) as any;
+                const allowedLocs: Record<string,string> = { 'SE_L1':'sun-earth-L1','SE_L3':'sun-earth-L3','SE_L4':'sun-earth-L4','SE_L5':'sun-earth-L5' };
+                const loc = item.location as string | undefined;
+                const sourceId = loc ? allowedLocs[loc] : undefined;
+                const beamId = 'laser-beam-' + item.id;
+                let beam = ENTITIES.find(e => (e as any).id === beamId) as any as LaserWeapon | undefined;
+                const locationOk = !!sourceId;
+                const canToggle = !!meteor && locationOk; // must have target meteor and be at valid lagrange point
+                const onClick = () => {
+                  if (!canToggle) return;
+                  // Recreate beam if missing or source changed
+                  if ((!beam || (beam as any).sourceId !== sourceId) && meteor && sourceId) {
+                    // If existing, we can't change private sourceId; destroy and replace
+                    if (beam && (beam as any).destroy) (beam as any).destroy();
+                    beam = new LaserWeapon(beamId, sourceId, meteor.id);
+                    registerSimEntity(beam);
+                  }
+                  if (beam) {
+                    beam.setActive(!beam.isActive());
+                  }
+                  item.state = beam && beam.isActive() ? 'ACTIVE_LOCATION' : 'AT_LOCATION';
+                  notify();
+                };
+                return (
+                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                    <button
+                      disabled={!canToggle}
+                      onClick={onClick}
+                      className='progress-btn'
+                      style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isActive? '#2e6f2e':'#345061'), background:isActive? '#214021':'#25323e', color:isActive? '#6dff6d':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:canToggle? 'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', opacity:canToggle?1:0.5 }}>
+                      <span style={{ minWidth:28, textAlign:'left' }} className='label-layer'>{isActive? 'ON':'OFF'}</span>
+                      <span style={{ flex:1, textAlign:'center' }} className='label-layer'>Laser</span>
+                      <span style={{ minWidth:38, textAlign:'right', opacity:0.6 }} className='label-layer'>{!canToggle? ' ' : ' '}</span>
+                    </button>
+                    {(!locationOk || (locationOk && !meteor)) && (
+                      <div style={{ fontSize:8.5, lineHeight:1.2, textAlign:'center', color:'#b9c6d4', opacity:0.75, padding:'0 2px' }}>
+                        {!locationOk ? 'Move to L1, L3, L4 or L5 to enable' : 'Waiting for meteor target'}
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : (() => {
                 const isImpactorType = bp.type==='small-impactor'||bp.type==='large-impactor'||bp.type==='giant-impactor';
                 if (isImpactorType) {
                   // Mirror launch prep style: Prep Activation -> Abort Activation. Big red button performs final activation.
@@ -380,8 +461,9 @@ export const EconomyPanel: React.FC = () => {
                     <span style={{ minWidth:38, textAlign:'right' }} className="label-layer">{activationFuel.toFixed(1)}t</span>
                   </button>
                 );
-              })()}
+              })() )}
               {/* Transfer / Change Location button (always enabled; gating only in submenu) */}
+              {bp.type==='orbital-habitat' ? null : (
               <button onClick={()=> setCommandContext(ctx=> ctx ? { ...ctx, mode:'transfer'} : null)} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background:'#283744', color:'#d4dde4', fontWeight:600, letterSpacing:0.35, cursor:'pointer', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                 { (bp.type==='small-impactor'||bp.type==='large-impactor'||bp.type==='giant-impactor') ? (
                   <>
@@ -392,11 +474,11 @@ export const EconomyPanel: React.FC = () => {
                 ) : (
                   <>
                     <span style={{ minWidth:28, textAlign:'left', opacity:0 }} className="label-layer">.</span>
-                    <span style={{ flex:1, textAlign:'center' }} className="label-layer">Transfer</span>
+                    <span style={{ flex:1, textAlign:'center' }} className="label-layer">{bp.type==='laser-platform' ? 'Change Location' : 'Transfer'}</span>
                     <span style={{ minWidth:38, textAlign:'right', opacity:0 }} className="label-layer">.</span>
                   </>
                 ) }
-              </button>
+              </button>)}
             </div>
           )}
           {item && bp && commandContext.mode==='root' && isTanker && (
@@ -471,29 +553,27 @@ export const EconomyPanel: React.FC = () => {
               </div>
               <div style={{ overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:3, paddingRight:2 }}>
               {(() => {
-                const isImpactor = (bp.type==='small-impactor'||bp.type==='large-impactor'||bp.type==='giant-impactor');
                 const origin = item.location || 'LEO';
-                const impactorAdj: Record<string,string[]> = {
+                const adjacency: Record<string,string[]> = {
                   'LEO': ['SE_L1','SE_L2'],
-                  'SE_L1': ['LEO','SE_L2','SE_L4','SE_L5'], // added L1<->L2 direct adjacency
-                  'SE_L2': ['LEO','SE_L1','SE_L4','SE_L5'], // added L2<->L1 direct adjacency
+                  'SE_L1': ['LEO','SE_L2','SE_L4','SE_L5'],
+                  'SE_L2': ['LEO','SE_L1','SE_L4','SE_L5'],
+                  'SE_L3': ['SE_L4','SE_L5'],
                   'SE_L4': ['SE_L1','SE_L2','SE_L3'],
-                  'SE_L5': ['SE_L1','SE_L2','SE_L3'],
-                  'SE_L3': ['SE_L4','SE_L5']
+                  'SE_L5': ['SE_L1','SE_L2','SE_L3']
                 };
-                const list = isImpactor ? (impactorAdj[origin]||[]) : lagrangePoints;
+                const list = adjacency[origin] || [];
                 return list.map(lp => {
                   // Recompute cost/duration using mass and helper approximations (duplicated logic minimal for UI preview)
-                  let simulatedMass = item.massTons;
+                  // Wet mass = dry + current onboard fuel for transfer preview
+                  let simulatedMass = item.massTons + (item.fuelTons||0);
                   // Mirror factors from actions.ts computeFuelCostForTransfer for impactors
                   let factor = 0.6; let days = 60;
-                  if (isImpactor) {
-                    factor = 0.4; days = 60;
-                    if ((origin==='LEO' && (lp==='SE_L1'||lp==='SE_L2')) || ((lp==='LEO') && (origin==='SE_L1'||origin==='SE_L2'))) { factor=0.25; days=30; }
-                    else if ((origin==='SE_L1'||origin==='SE_L2') && (lp==='SE_L4'||lp==='SE_L5')) { factor=0.35; days=90; }
-                    else if ((origin==='SE_L4'||origin==='SE_L5') && (lp==='SE_L3')) { factor=0.3; days=120; }
-                    else if (origin==='SE_L3' && (lp==='SE_L4'||lp==='SE_L5')) { factor=0.3; days=120; }
-                  }
+                  factor = 0.45; days = 60; // baseline unified with backend
+                  if ((origin==='LEO' && (lp==='SE_L1'||lp==='SE_L2')) || ((lp==='LEO') && (origin==='SE_L1'||origin==='SE_L2'))) { factor=0.25; days=30; }
+                  else if ((origin==='SE_L1'||origin==='SE_L2') && (lp==='SE_L4'||lp==='SE_L5')) { factor=0.35; days=90; }
+                  else if ((origin==='SE_L4'||origin==='SE_L5') && (lp==='SE_L3')) { factor=0.3; days=120; }
+                  else if (origin==='SE_L3' && (lp==='SE_L4'||lp==='SE_L5')) { factor=0.3; days=120; }
                   const cost = simulatedMass * (origin===lp ? 0.05 : factor);
                   const dur = origin===lp ? 7 : days;
                   // Legacy gating used !canTransfer which only reflected an old simple LEO<->dest rule.
@@ -572,7 +652,7 @@ export const EconomyPanel: React.FC = () => {
                   else if ((origin==='SE_L1'||origin==='SE_L2') && (lp==='SE_L4'||lp==='SE_L5')) { factor=0.30; days=75; }
                   else if ((origin==='SE_L4'||origin==='SE_L5') && (lp==='SE_L3')) { factor=0.28; days=110; }
                   else if (origin==='SE_L3' && (lp==='SE_L4'||lp==='SE_L5')) { factor=0.28; days=110; }
-                  const cost = item.massTons * factor;
+                  const cost = (item.massTons + (item.fuelTons||0)) * factor;
                   const dur = days;
                   const disabledBtn = (item.fuelTons||0) < cost;
                   return (

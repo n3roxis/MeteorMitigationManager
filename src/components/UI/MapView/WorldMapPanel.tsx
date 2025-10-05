@@ -52,7 +52,10 @@ export const WorldMapPanel: React.FC = () => {
           map.anchor.set(0.5,0.5);
           map.position.set(rect.width/2,rect.height/2);
         
-          // setup impact Stack
+          // setup impact stack (layers for impact visualization)
+          const stack = new ImpactStack('impact-stack', new Vector(0,0,0), []);
+          stack.start(app as any);
+          stack.updateViewPort(viewport);
           viewport.fit(true);
           
 

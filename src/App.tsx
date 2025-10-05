@@ -1,15 +1,36 @@
 import { AsteroidInfo } from './components/UI/Hud/AsteroidInfo';
 import WorldMapPanel from './components/UI/MapView/WorldMapPanel';
 import SolarSystemPanel from './components/UI/OrbitView/SolarSystemPanel';
-import WorldMapPanel from './components/UI/MapView/WorldMapPanel';
 import EconomyPanel from './components/UI/OrbitView/EconomyPanel';
 import { economyState } from './solar_system/economy/state';
 import { finalizePreparedLaunch, deorbitItem, activateItem } from './solar_system/economy/actions';
-import { IMPACTOR_NOMINAL_FLIGHT_TIME_SEC, IMPACTOR_FLIGHT_TIME_VARIANTS, ACTIVATION_SOLVER_POLL_INTERVAL_MS } from './solar_system/economy/balance';
+import { IMPACTOR_NOMINAL_FLIGHT_TIME_SEC, IMPACTOR_FLIGHT_TIME_VARIANTS } from './solar_system/economy/balance';
 import { InterceptPath } from './solar_system/entities/Interceptor/InterceptPath';
 import { ENTITIES } from './solar_system/state/entities';
 import { METEOR_UNO } from './solar_system/data/meteors';
 import React from 'react';
+
+// Simple countdown component using assumed total meteor flight (365 days) minus elapsed sim time (from economyState.timeSec)
+const TOTAL_METEOR_FLIGHT_DAYS = 365; // matches meteors.ts flightDays
+const CountdownToImpact: React.FC = () => {
+  // economyState.timeSec updated via simulation loop; convert to days
+  const elapsedDays = economyState.timeSec / 86400;
+  const remainingDays = Math.max(0, TOTAL_METEOR_FLIGHT_DAYS - elapsedDays);
+  const remainingSec = remainingDays * 86400;
+  const d = Math.floor(remainingSec / 86400);
+  const h = Math.floor((remainingSec % 86400) / 3600);
+  const m = Math.floor((remainingSec % 3600) / 60);
+  const s = Math.floor(remainingSec % 60);
+  return (
+    <div style={{ flex:'0 0 auto', padding:'4px 6px 0', textAlign:'center', display:'flex', flexDirection:'column', gap:2 }}>
+      <div style={{ fontSize:11, letterSpacing:0.5, fontWeight:600, color:'#8ab8d1', textTransform:'uppercase' }}>Impact ETA</div>
+      <div style={{ fontSize:18, fontWeight:600, fontFamily:'monospace', letterSpacing:1, color:'#f6f8fa', textShadow:'0 0 6px #000' }}>
+        {d}d {h.toString().padStart(2,'0')}:{m.toString().padStart(2,'0')}:{s.toString().padStart(2,'0')}
+      </div>
+      <div style={{ fontSize:10, color:'#6d8899', letterSpacing:0.4 }}>Elapsed {elapsedDays.toFixed(1)}d</div>
+    </div>
+  );
+};
 
 const App = () => {
   // Local tick to trigger re-render so big launch button reflects PREPPED_LAUNCH changes
@@ -24,7 +45,7 @@ const App = () => {
     const frameLoop = () => {
       if (cancelled) return;
       const now = Date.now();
-      const preppedActivation = economyState.inventory.find(i=>i.state==='PREPPED_ACTIVATION');
+  const preppedActivation = economyState.inventory.find((i:any)=>i.state==='PREPPED_ACTIVATION');
       if (preppedActivation && preppedActivation.blueprint.includes('impactor')) {
         // Run every frame; optionally skip if same ms timestamp (micro-optimization)
         if (now !== lastSolveRef.current) {
@@ -40,7 +61,7 @@ const App = () => {
               const meteorEnt: any = ENTITIES.find(e=> (e as any).id === METEOR_UNO.id);
               if (originEnt && meteorEnt) {
                 const interceptor = new InterceptPath(`ui-solver-${preppedActivation.id}`, originEnt, meteorEnt, false);
-                const tries = IMPACTOR_FLIGHT_TIME_VARIANTS.map(m=>IMPACTOR_NOMINAL_FLIGHT_TIME_SEC*m);
+                const tries = IMPACTOR_FLIGHT_TIME_VARIANTS.map((m:number)=>IMPACTOR_NOMINAL_FLIGHT_TIME_SEC*m);
                 const massGuess = (preppedActivation.massTons||1)*1000;
                 const found = interceptor.findTrajectories(tries, massGuess);
                 if (found>0) {
@@ -81,107 +102,32 @@ const App = () => {
         <SolarSystemPanel />
       </div>
       {/* Top Right: World Map */}
-      <div style={{ position: 'relative', borderBottom: '1px solid #1d2530' }}>
+      <div style={{ position: 'relative', borderBottom: '1px solid #1d2530', overflow:'hidden' }}>
         <WorldMapPanel />
-    <div>
-      <div style={{ display:'flex',width:'100vw',height:'100vh',position:'absolute', overflow:'hidden',justifyContent:'center',flexDirection:'column',alignItems:'center',pointerEvents:'none'}}>
-          <AsteroidInfo/>
       </div>
-      <div style={{ display: 'flex', width: '100vw', height: '100vh', margin: 0, background: '#121212', color: '#eee', fontFamily: 'system-ui, Arial, sans-serif', overflow: 'hidden' }}>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex' }}>
-          <SolarSystemPanel/>
-        </div>
-        <div style={{flex: 1, maxWidth:2,display: 'flex', background: '#aaaaaa'}}></div>
-        <div style={{ flex: 1, minWidth: 0, display: 'flex' }}>
-          <WorldMapPanel />
-        </div>
+      {/* Center the AsteroidInfo radar circle dead-center on screen (no frame) */}
+      <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%, -50%)', width:200, height:200, zIndex:1200, pointerEvents:'none' }}>
+        <AsteroidInfo diameter={200} />
       </div>
-      {/* Bottom full row container (custom layout with extra middle panel) */}
-      <div style={{ gridColumn:'1 / span 2', position:'relative', display:'flex', flexDirection:'row', width:'100%', height:'100%', borderTop:'1px solid #1d2530' }}>
+
+      {/* Bottom full row container (spans both columns) */}
+      <div style={{ gridColumn:'1 / span 2', gridRow:'2 / 3', position:'relative', display:'flex', flexDirection:'row', width:'100%', height:'100%', borderTop:'1px solid #1d2530' }}>
         {/* Bottom Left: Economy Panel */}
         <div style={{ position:'relative', flex:'1 1 auto', borderRight:'1px solid #1d2530', background:'rgba(10,10,16,0.9)', overflow:'hidden' }}>
           <EconomyPanel />
         </div>
-        {/* Middle fixed 200px panel with debug stacked above big button, both bottom-aligned */}
-        <div style={{ width:200, minWidth:200, maxWidth:200, flex:'0 0 200px', borderRight:'1px solid #1d2530', background:'#141b22', position:'relative', display:'flex', flexDirection:'column', fontSize:11, lineHeight:1.25 }}>
-          <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'stretch', justifyContent:'flex-end', padding:'0 0 12px' }}>
-            <div style={{ flex:'0 0 auto', padding:'6px 6px 4px', borderBottom:'1px solid #1d2530', fontWeight:600, letterSpacing:0.5, color:'#88b0c8' }}>Activation Solver</div>
-            <div style={{ flex:'0 0 auto', padding:'4px 6px 6px', borderBottom:'1px solid #1d2530', minHeight:90 }}>
+        {/* Middle fixed 200px panel with only the big red button */}
+        <div style={{ width:200, minWidth:200, maxWidth:200, flex:'0 0 200px', borderRight:'1px solid #1d2530', background:'#141b22', position:'relative', display:'flex', flexDirection:'column', padding:'0 0 14px 0' }}>
+          {/* Reserved top space (100px) so it doesn't visually collide with centered AsteroidInfo */}
+          <div style={{ height:100, flex:'0 0 auto' }} />
+          {/* Countdown */}
+          <CountdownToImpact />
+          <div style={{ flex:1 }} />
+          <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
             {(() => {
-              const preppedActivation = economyState.inventory.find(i=>i.state==='PREPPED_ACTIVATION');
-              if (!preppedActivation) return <div style={{ opacity:0.5 }}>No impactor in activation prep.</div>;
-              if (!preppedActivation.blueprint.includes('impactor')) return <div style={{ opacity:0.5 }}>Activation prep (non-impactor)</div>;
-              const cache = preppedActivation.activationTrajectory;
-              const now = Date.now();
-              if (!cache) return <div style={{ color:'#bbb' }}>Status: <span style={{ color:'#d97717' }}>initializing…</span></div>;
-              const age = (now - cache.checkedAt)/1000;
-              const fmt = (v:number)=> {
-                if (!isFinite(v)) return 'NaN';
-                const av = Math.abs(v);
-                if (av>1000) return v.toFixed(1);
-                if (av>=0.01) return v.toFixed(3);
-                if (av===0) return '0';
-                return v.toExponential(2);
-              };
-              let depMag = 0; let metMag = 0;
-              let ux = 0, uy = 0, uz = 0, azDeg = 0, elDeg = 0;
-              if (cache.depVel) {
-                const [vx, vy, vz] = cache.depVel;
-                depMag = Math.sqrt(vx*vx + vy*vy + vz*vz);
-                if (depMag > 0) {
-                  ux = vx/depMag; uy = vy/depMag; uz = vz/depMag;
-                  azDeg = (Math.atan2(vy, vx) * 180/Math.PI + 360) % 360; // 0° = +X axis
-                  const horiz = Math.sqrt(vx*vx + vy*vy);
-                  elDeg = Math.atan2(vz, horiz) * 180/Math.PI; // elevation above XY plane
-                }
-              }
-              if (cache.meteorDelta) metMag = Math.sqrt(cache.meteorDelta[0]**2 + cache.meteorDelta[1]**2 + cache.meteorDelta[2]**2);
-              return (
-                <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-                  <div>Status: {cache.viable ? <span style={{ color:'#3ecf5e' }}>VIABLE</span> : <span style={{ color:'#d97717' }}>SEARCHING</span>}</div>
-                  <div>Last Check: {fmt(age)}s ago</div>
-                  {cache.flightTimeSec && <div>Flight Time: {(cache.flightTimeSec/86400).toFixed(1)} d</div>}
-                  {cache.depVel && <div>Dep |v|: {fmt(depMag)}</div>}
-                  {cache.depVel && <div style={{ whiteSpace:'nowrap' }}>V: {cache.depVel.map(v=>fmt(v)).join(' ')}</div>}
-                  {cache.depVel && <div style={{ whiteSpace:'nowrap' }}>Û: {fmt(ux)} {fmt(uy)} {fmt(uz)}</div>}
-                  {cache.depVel && <div>Az/Elev: {fmt(azDeg)}° / {fmt(elDeg)}°</div>}
-                  {cache.meteorDelta && <div>Δv meteor: {fmt(metMag)}</div>}
-                  <div style={{ opacity:0.6 }}>Poll {ACTIVATION_SOLVER_POLL_INTERVAL_MS/1000}s</div>
-                </div>
-              );
-            })()}
-            </div>
-            {/* Projectile debug list */}
-            <div style={{ flex:'0 0 auto', padding:'4px 6px 6px', borderBottom:'1px solid #1d2530', maxHeight:130, overflowY:'auto' }}>
-            {(() => {
-              // Collect interceptor projectiles
-              const projs: any[] = ENTITIES.filter(e=> (e as any).constructor && (e as any).constructor.name === 'InterceptorProjectile') as any[];
-              if (projs.length===0) return <div style={{ opacity:0.5 }}>No projectiles in flight.</div>;
-              const rows = projs.map(p=>{
-                const pos = (p as any).position; const vel = (p as any).velocity; const ft = (p as any).flightTime; const el = (p as any).elapsed || 0;
-                const speed = Math.sqrt(vel.x*vel.x+vel.y*vel.y+vel.z*vel.z);
-                const pct = ft>0 ? Math.min(100, (el/ft)*100) : 0;
-                const numFmt = (v:number)=>{
-                  const av=Math.abs(v); if(av>=0.01) return v.toFixed(3); if(av===0) return '0'; return v.toExponential(2);
-                };
-                const rmag = Math.sqrt(pos.x*pos.x+pos.y*pos.y+pos.z*pos.z);
-                return <div key={p.id} style={{ marginBottom:3 }}>
-                  <div style={{ color:'#89c5ff' }}>{p.id}</div>
-                  <div style={{ whiteSpace:'nowrap' }}>r: {numFmt(pos.x)} {numFmt(pos.y)} {numFmt(pos.z)}</div>
-                  <div style={{ whiteSpace:'nowrap' }}>|r|: {numFmt(rmag)}</div>
-                  <div style={{ whiteSpace:'nowrap' }}>v: {numFmt(vel.x)} {numFmt(vel.y)} {numFmt(vel.z)}</div>
-                  <div style={{ whiteSpace:'nowrap' }}>|v|: {numFmt(speed)}  t: {el.toFixed(1)}/{ft.toFixed(1)}s ({pct.toFixed(1)}%)</div>
-                </div>;
-              });
-              return <div>{rows}</div>;
-            })()}
-            </div>
-            {/* Big red activation / launch button bottom-aligned */}
-            <div style={{ flex:'0 0 auto', display:'flex', alignItems:'flex-end', justifyContent:'center', paddingTop:10 }}>
-            {(() => {
-              const preppedLaunch = economyState.inventory.find(i=>i.state==='PREPPED_LAUNCH');
-              const preppedLanding = economyState.inventory.find(i=>i.state==='PREPPED_LANDING');
-              const preppedActivation = economyState.inventory.find(i=>i.state==='PREPPED_ACTIVATION');
+              const preppedLaunch = economyState.inventory.find((i:any)=>i.state==='PREPPED_LAUNCH');
+              const preppedLanding = economyState.inventory.find((i:any)=>i.state==='PREPPED_LANDING');
+              const preppedActivation = economyState.inventory.find((i:any)=>i.state==='PREPPED_ACTIVATION');
               // Determine activation viability & fuel sufficiency for impactors
               let activationSearching = false;
               let activationNeedsFuel = false; // disabled (bypassed) for impactor fuel debug
@@ -242,7 +188,6 @@ const App = () => {
                 )}
               </button>
               ); })()}
-            </div>
           </div>
         </div>
         {/* Bottom Right: Future panel placeholder */}

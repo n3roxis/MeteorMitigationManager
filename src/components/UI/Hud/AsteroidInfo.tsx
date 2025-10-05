@@ -1,9 +1,11 @@
+import React, { useEffect, useRef } from "react";
 import { Application } from "pixi.js";
-import { useEffect, useRef } from "react";
 import { DataBroker } from "../../../Logic/Utils/TranslationInterface";
 import { RadarScreen } from "../../Graphics/Impact/RadarScreen";
 
-export const AsteroidInfo: React.FC =()=>{
+interface AsteroidInfoProps { diameter?: number; }
+
+export const AsteroidInfo: React.FC<AsteroidInfoProps> = ({ diameter = 200 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
       const el = containerRef.current;
@@ -14,9 +16,8 @@ export const AsteroidInfo: React.FC =()=>{
 
       (async () => {
         try {
-          // Temporary init size; will resize immediately after
-          const rect = el.getBoundingClientRect();
-          await app.init({ width: rect.width || 1, height: rect.height || 1, backgroundAlpha:0, antialias: true });
+          // Use provided width/height explicitly for initial canvas size to avoid 1px fallback when rect not yet laid out
+          await app.init({ width: diameter, height: diameter, backgroundAlpha:0, antialias: true });
           if (disposed) return;
           el.appendChild(app.canvas);
           
@@ -34,9 +35,7 @@ export const AsteroidInfo: React.FC =()=>{
           app.ticker.add((tick)=>{
             const impact = DataBroker.instance.getImpact()
             //take impact name,size,angle, dense, vel
-            if(impact){
-              const a = tick.deltaTime;
-            }
+            if(impact){ /* future impact-based updates here */ }
             display.update(tick.deltaTime);
           })
           
@@ -68,7 +67,21 @@ export const AsteroidInfo: React.FC =()=>{
         if (ro) ro.disconnect();
         if ((app as any).renderer) app.destroy(true, { children: true, texture: true });
       };
-    }, []);
-  
-    return <div ref={containerRef} style={{width: '100%', height: '100%'}} />;
+    }, [diameter]);
+
+    return (
+      <div
+        ref={containerRef}
+        style={{
+          width: diameter,
+          height: diameter,
+          borderRadius: '50%',
+          overflow: 'hidden',
+          position: 'relative',
+          boxShadow: '0 0 8px 2px #4cc3ff55, 0 0 0 1px #1c2a33 inset',
+          backdropFilter: 'blur(2px)',
+          WebkitMaskImage: 'radial-gradient(circle at center, #000 70%, rgba(0,0,0,0.0) 100%)'
+        }}
+      />
+    );
 };

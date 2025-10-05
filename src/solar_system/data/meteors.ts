@@ -8,7 +8,7 @@ import { orbitalPositionAtTime } from "../utils/orbitalMath";
 // Helper: generate a meteor at ~2 AU that will (ballistically) reach the Sun/Earth vicinity (~1 AU) in a target time using Lambert.
 // We assume Earth at (1,0,0) AU and use that as arrival point for simplicity.
 function createInboundMeteor400d(): Meteor {
-  const flightDays = 100; // Adjust this to change time-of-flight
+  const flightDays = 200; // Adjust this to change time-of-flight
   const tof = flightDays * 86400; // seconds
   // Start 2 AU from Sun along -X axis (so moving inward toward +X Earth position) but offset slightly in Y to give some approach angle.
   const start = new Vector(-2, 0.15, 0); // AU

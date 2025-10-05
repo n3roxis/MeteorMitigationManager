@@ -438,6 +438,7 @@ export class PathPredictor implements UpdatableEntity {
     if (this.hitCalled) return;
     this.hitCalled = true;
     console.log("[PathPredictor] aliveTime reached — hit()"); //TODO kill this whole thing
+    this.destroy()
     // Hook für spätere Aktionen (Trigger/Callback etc.)
   }
 }

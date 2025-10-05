@@ -9,7 +9,7 @@ export let RADIUS_SCALE = 1; // exaggeration factor; 1 = true scale (would be su
 export const MIN_PIXEL_RADIUS = 2; // floor for visibility
 
 // Sim time scale: simulated days per real second (default ~30 ≈ 1 month/sec)
-export let SIM_DAYS_PER_REAL_SECOND = 6;
+export let SIM_DAYS_PER_REAL_SECOND = 1;
 
 // Fixed physics rate (ticks per real second). Predictor and meteor should use same dt derived from this.
 export const PHYSICS_TICKS_PER_SECOND = 300; // 100Hz physics

@@ -1,9 +1,9 @@
 import { Application, Graphics } from 'pixi.js';
-import { UpdatableEntity } from './Entity';
-import { Vector } from '../utils/Vector';
-import { POSITION_SCALE, RADIUS_SCALE, MIN_PIXEL_RADIUS, AU_IN_KM } from '../config/scales';
-import { orbitalPositionAtTime } from '../utils/orbitalMath';
+import { AU_IN_KM, MIN_PIXEL_RADIUS, POSITION_SCALE, RADIUS_SCALE } from '../config/scales';
 import { SIM_TIME_DAYS } from '../state/simulation';
+import { orbitalPositionAtTime } from '../utils/orbitalMath';
+import { Vector } from '../utils/Vector';
+import { UpdatableEntity } from './Entity';
 import { Orbit } from './Orbit';
 
 export class Planet implements UpdatableEntity {

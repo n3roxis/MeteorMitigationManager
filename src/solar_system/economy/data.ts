@@ -25,7 +25,7 @@ export const RESEARCH_DEFS: ResearchDef[] = [
     // Increased from 14 days to ~3 months (90 days)
     durationSec: 90 * 24 * 3600,
     unlocks: ['laser-platform'],
-    prereq: ['large-kinetic']
+    //prereq: ['large-kinetic']
   },
   {
     id: 'tsunami-dams',
@@ -53,6 +53,15 @@ export const RESEARCH_DEFS: ResearchDef[] = [
     durationSec: 75 * 24 * 3600,
     unlocks: ['orbital-tanker'],
     //prereq: ['space-laser']
+  }
+  ,{
+    id: 'orbital-habitat-tech',
+    name: 'Orbital Habitat Systems',
+    costFunds: 14,
+    // Long duration life support design ~100 days
+    durationSec: 100 * 24 * 3600,
+    unlocks: ['orbital-habitat']
+    // No prerequisites per request
   }
 ];
 
@@ -125,6 +134,17 @@ export const BLUEPRINTS: BuildableBlueprint[] = [
     // Tanker carries large internal fuel for redistribution; activation reserves fuel for prepping transfer manifolds
     activationFuelTons: 12,
     activationDurationSec: 21 * 24 * 3600
+  }
+  ,{
+    type: 'orbital-habitat',
+    name: 'Orbital Habitat Module',
+    buildCostFunds: 11,
+    // Complex pressurized module ~70 days
+    buildDurationSec: 70 * 24 * 3600,
+    massTons: 35,
+    launchCostFunds: 3.2,
+    // No activation; passive once in LEO
+    activationDurationSec: 0
   }
 ];
 

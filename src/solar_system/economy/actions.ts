@@ -1,5 +1,6 @@
 import { GameEconomyState, ScheduledAction, ResearchId, BuildableType, LocationId } from './models';
 import { BLUEPRINT_INDEX, RESEARCH_INDEX } from './data';
+import { computeLaunchCostFunds, computeLaunchPrepDurationSec } from './balance';
 
 let actionCounter = 0;
 const newActionId = () => `act-${++actionCounter}`;
@@ -46,17 +47,16 @@ export function startBuild(state: GameEconomyState, type: BuildableType) {
 }
 
 export function launchItem(state: GameEconomyState, itemId: string) {
-  // This now represents "Prep Launch" phase only. Actual insertion into orbit will be triggered by global Launch button.
   const item = state.inventory.find(i => i.id === itemId); if (!item || item.state !== 'BUILT') throw new Error('Not launch-prepable');
   const bp = BLUEPRINT_INDEX.get(item.blueprint)!;
-  if (bp.type === 'tsunami-dam-module') {
-    // Hard restriction: dam modules are ground infrastructure only
-    throw new Error('Tsunami dam modules are ground infrastructure and cannot be launched');
-  }
-  if (state.fundsBillion < bp.launchCostFunds) throw new Error('Funds');
-  state.fundsBillion -= bp.launchCostFunds;
-  const prepDur = 7 * 24 * 3600; // 1 week prep
-  push(state, { id: newActionId(), kind: 'LAUNCH', startTime: state.timeSec, endTime: state.timeSec + prepDur, payload: { itemId, duration: prepDur } });
+  if (bp.type === 'tsunami-dam-module') throw new Error('Tsunami dam modules are ground infrastructure and cannot be launched');
+  // Launch cost uses fully-fueled (wet) mass: dry mass + max fuel capacity (assumed filled for launch logistics)
+  const wetLaunchMass = item.massTons + (item.fuelCapacityTons || 0);
+  const cost = computeLaunchCostFunds(wetLaunchMass);
+  if (state.fundsBillion < cost) throw new Error('Funds');
+  state.fundsBillion -= cost;
+  const prepDur = computeLaunchPrepDurationSec(item.massTons);
+  push(state, { id: newActionId(), kind: 'LAUNCH', startTime: state.timeSec, endTime: state.timeSec + prepDur, payload: { itemId, duration: prepDur, massTons: item.massTons, dynamicLaunchCost: cost } });
 }
 
 export function finalizePreparedLaunch(state: GameEconomyState, itemId: string) {
@@ -88,6 +88,8 @@ export function deorbitItem(state: GameEconomyState, itemId: string) {
 export function prepareLanding(state: GameEconomyState, itemId: string) {
   const item = state.inventory.find(i=>i.id===itemId);
   if (!item) throw new Error('Missing');
+  const bp = BLUEPRINT_INDEX.get(item.blueprint);
+  if (bp && bp.type==='orbital-habitat') throw new Error('Orbital habitat cannot be landed');
   if (!(item.state === 'AT_LOCATION' || item.state === 'ACTIVE_LOCATION')) throw new Error('Cannot prep landing from current state');
   // 1 day landing prep
   const dur = 1 * 24 * 3600;
@@ -163,14 +165,17 @@ export function deactivateItem(state: GameEconomyState, itemId: string) {
 
 export function transferObject(state: GameEconomyState, itemId: string, destination: LocationId) {
   const item = state.inventory.find(i => i.id === itemId); if (!item) throw new Error('Missing');
+  const bp = BLUEPRINT_INDEX.get(item.blueprint);
+  if (bp && bp.type==='orbital-habitat') throw new Error('Orbital habitat is stationary in LEO');
   const origin: LocationId = (item.state === 'AT_LOCATION' || item.state === 'ACTIVE_LOCATION') && item.location ? item.location : 'LEO';
   if (!(item.state === 'AT_LOCATION' || item.state === 'ACTIVE_LOCATION')) throw new Error('State');
-  const mass = item.massTons;
-  const fuelCost = computeFuelCostForTransfer(mass, origin, destination, item.blueprint);
+  // Transfer fuel cost uses current instantaneous wet mass (dry + current onboard fuel)
+  const wetMass = item.massTons + (item.fuelTons || 0);
+  const fuelCost = computeFuelCostForTransfer(wetMass, origin, destination);
   // Use onboard craft fuel
   if ((item.fuelTons||0) < fuelCost) throw new Error('Insufficient onboard fuel');
   item.fuelTons = (item.fuelTons||0) - fuelCost; // deduct immediately
-  const duration = Math.max(computeTransferDuration(origin, destination, item.blueprint), 7*24*3600);
+  const duration = Math.max(computeTransferDuration(origin, destination), 7*24*3600);
   item.state = 'IN_TRANSFER';
   const nowMs = Date.now();
   item.transfer = { origin, destination, departureTime: state.timeSec, arrivalTime: state.timeSec + duration, fuelCost, realDepartureMs: nowMs, realArrivalMs: nowMs + duration*1000 };
@@ -304,8 +309,8 @@ function finalizeAction(state: GameEconomyState, act: ScheduledAction) {
   }
 }
 
-// Adjacency graph for kinetic impactor change-location feature
-const IMPACTOR_GRAPH: Record<LocationId, LocationId[]> = {
+// Adjacency graph for orbital location changes (applies to all movable orbital items)
+const ORBITAL_ADJACENCY: Record<LocationId, LocationId[]> = {
   'LEO': ['SE_L1','SE_L2','DEPLOYED'],
   'SE_L1': ['LEO','SE_L2','SE_L4','SE_L5'],
   'SE_L2': ['LEO','SE_L1','SE_L4','SE_L5'],
@@ -316,27 +321,24 @@ const IMPACTOR_GRAPH: Record<LocationId, LocationId[]> = {
   'DEPLOYED': ['LEO']
 };
 
-export function computeFuelCostForTransfer(massTons: number, origin: LocationId, destination: LocationId, blueprint?: BuildableType) {
-  if (origin === destination) return massTons * 0.05; // trivial adjustment cost
-  const isImpactor = blueprint === 'small-impactor' || blueprint === 'large-impactor' || blueprint === 'giant-impactor';
-  if (isImpactor && IMPACTOR_GRAPH[origin]?.includes(destination)) {
-    // Fraction of mass scaling with relative difficulty: default 0.4, with special lower for nearby (LEO<->L1/L2) 0.25
-    let factor = 0.4;
+export function computeFuelCostForTransfer(massTons: number, origin: LocationId, destination: LocationId) {
+  if (origin === destination) return massTons * 0.05; // trivial reposition cost
+  // Use unified orbital adjacency for any craft that is not a purely ground asset
+  if (ORBITAL_ADJACENCY[origin]?.includes(destination)) {
+    let factor = 0.45; // default slightly higher baseline
     if ((origin==='LEO' && (destination==='SE_L1' || destination==='SE_L2')) || ((destination==='LEO') && (origin==='SE_L1' || origin==='SE_L2'))) factor = 0.25;
-    if ((origin==='SE_L1' || origin==='SE_L2') && (destination==='SE_L4' || destination==='SE_L5')) factor = 0.35;
-    if ((origin==='SE_L4' || origin==='SE_L5') && (destination==='SE_L3')) factor = 0.3;
-    if (origin==='SE_L3' && (destination==='SE_L4' || destination==='SE_L5')) factor = 0.3;
+    else if ((origin==='SE_L1' || origin==='SE_L2') && (destination==='SE_L4' || destination==='SE_L5')) factor = 0.35;
+    else if ((origin==='SE_L4' || origin==='SE_L5') && (destination==='SE_L3')) factor = 0.3;
+    else if (origin==='SE_L3' && (destination==='SE_L4' || destination==='SE_L5')) factor = 0.3;
     return massTons * factor;
   }
-  // Legacy path (LEO <-> DEPLOYED or anything not in graph)
+  // Legacy path (LEO <-> DEPLOYED or anything not enumerated)
   return massTons * 0.6;
 }
-function computeTransferDuration(origin: LocationId, destination: LocationId, blueprint?: BuildableType) {
+function computeTransferDuration(origin: LocationId, destination: LocationId) {
   if (origin === destination) return 7 * 24 * 3600;
-  const isImpactor = blueprint === 'small-impactor' || blueprint === 'large-impactor' || blueprint === 'giant-impactor';
-  if (isImpactor && IMPACTOR_GRAPH[origin]?.includes(destination)) {
-    // Base durations in days relative to delta-v complexity
-    let days = 60; // default baseline
+  if (ORBITAL_ADJACENCY[origin]?.includes(destination)) {
+    let days = 60; // baseline
     if ((origin==='LEO' && (destination==='SE_L1' || destination==='SE_L2')) || ((destination==='LEO') && (origin==='SE_L1' || origin==='SE_L2'))) days = 30;
     else if ((origin==='SE_L1' || origin==='SE_L2') && (destination==='SE_L4' || destination==='SE_L5')) days = 90;
     else if ((origin==='SE_L4' || origin==='SE_L5') && (destination==='SE_L3')) days = 120;

@@ -1,8 +1,12 @@
 import { GameEconomyState } from './models';
 
+// Central place to tweak starting funds for testing/balancing.
+// Increase as needed during rapid iteration; reduce before final balancing pass.
+export const INITIAL_FUNDS_BILLION = 500; // was 40
+
 export const economyState: GameEconomyState = {
   timeSec: 0,
-  fundsBillion: 40,
+  fundsBillion: INITIAL_FUNDS_BILLION,
   researchUnlocked: new Set(),
   researchInProgress: new Set(),
   inventory: [],

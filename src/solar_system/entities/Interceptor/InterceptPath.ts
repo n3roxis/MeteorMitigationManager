@@ -89,7 +89,9 @@ export class InterceptPath implements UpdatableEntity {
     this.trace = points;
   }
 
-  findTrajectory(transportSecondsTries: number [], impactorMass: number): LambertPathEvaluationType | null {
+  trajectories: LambertPathEvaluationType[] = [];
+
+  findTrajectories(transportSecondsTries: number [], impactorMass: number) {
 
     const evaluations: LambertPathEvaluationType[] = [];
 
@@ -101,7 +103,6 @@ export class InterceptPath implements UpdatableEntity {
         evaluation.fuelConsumptionMass = this.calculateFuelMass(impactorMass, evaluation.departureDeltaVelocity.length());
         evaluation.meteorVelocityChange = evaluation.arrivalDeltaVelocity.scale(impactorMass / this.targetEntity.mass);
         evaluations.push(evaluation);
-
       } catch (e) {
         console.log("Failure")
       }
@@ -109,11 +110,29 @@ export class InterceptPath implements UpdatableEntity {
 
     console.log(`DebugLog: Found ${evaluations.length} possible paths in ${transportSecondsTries.length} tries`)
 
-    if (evaluations.length === 0) return null;
+    this.trajectories = evaluations;
 
-    const chosenOne = evaluations[0] // TODO be more creative :)
-    this.chosenPath = chosenOne;
-    return chosenOne;
+    return evaluations.length;
+  }
+
+  chooseTrajectory(index: number) {
+    if (index < 0 || index >= this.trajectories.length) {
+      console.log("Bad index: ", index, " out of range [0, ", this.trajectories.length,)
+      return;
+    }
+    this.chosenPath = this.trajectories[index];
+  }
+
+  printTrace() {
+    if (!this.chosenPath) return;
+    console.log("DebugLog: Chosen trajectory: ", this.trace)
+  }
+
+  drawTrajectory() {
+    if (!this.chosenPath) return;
+    if (!this.gfx) return;
+    this.gfx.clear();
+    this.gfx.lineStyle(2, this.color);
   }
 
   private calculateFuelMass(massPayload: number, deltaVelocity: number, exhaustVelocity = 1800 / DEBUG_AU) {

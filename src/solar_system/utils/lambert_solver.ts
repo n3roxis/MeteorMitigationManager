@@ -1,7 +1,6 @@
 // If your setup prefers require(), uncomment the next two lines and remove the import.
 // // eslint-disable-next-line @typescript-eslint/no-var-requires
 // const cephes: { hyp2f1: (a: number, b: number, c: number, z: number) => number } = require("cephes");
-import {hyp2f1} from "cephes";
 import {Vector} from "./Vector.ts";
 
 const pi = Math.PI;
@@ -335,6 +334,31 @@ function _householder(
         p0 = p;
     }
     throw new Error("Failed to converge");
+}
+
+/**
+ * Lightweight real-valued approximation of the Gaussian hypergeometric function ₂F₁(a,b;c;z)
+ * using a simple power-series expansion.
+ * Valid for |z| < 1 (and converges slowly near 1).
+ * For most Lambert solver use cases (small z) this is sufficient.
+ */
+
+export function hyp2f1(a: number, b: number, c: number, z: number): number {
+  if (Math.abs(z) >= 1) {
+    console.warn("hyp2f1(): |z| >= 1 may diverge; result may be inaccurate.");
+  }
+
+  let term = 1.0;
+  let sum = 1.0;
+
+  // series expansion: sum_{n=0}^∞ [(a)_n (b)_n / (c)_n] * z^n / n!
+  for (let n = 1; n < 1000; n++) {
+    term *= ((a + n - 1) * (b + n - 1)) / ((c + n - 1) * n) * z;
+    sum += term;
+    if (Math.abs(term) < 1e-14) break;
+  }
+
+  return sum;
 }
 
 /* -------------------------------------------------------------------------- */

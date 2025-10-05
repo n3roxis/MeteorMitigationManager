@@ -23,21 +23,21 @@ import { Moon } from '../entities/Moon';
 // TODO Phases stimmen net
 
 // Star / Planets / Moon constants
-export const SUN = new Planet('sun', 696000, 332981.79, 0xffd54f, SUN_ORBIT, 0);
-export const MERCURY = new Planet('mercury', 2439.5, 0.055243, 0xc0c0c0, MERCURY_ORBIT, 3.14);
-export const VENUS = new Planet('venus', 6051.8, 0.815254, 0xffc58f, VENUS_ORBIT, 0.1);
+export const SUN = new Planet('sun', 696000, 332981.79, 0xffd54f, SUN_ORBIT, 3.14);
+export const MERCURY = new Planet('mercury', 2439.5, 0.055243, 0xc0c0c0, MERCURY_ORBIT, 0.0);
+export const VENUS = new Planet('venus', 6051.8, 0.815254, 0xffc58f, VENUS_ORBIT, 0.0);
 // Barycenter (fictional) uses the system orbit (Earth's original orbital elements)
-export const EARTH_MOON_BARYCENTER = new Planet('earth-moon-bary', 10, 0, 0xaaaaaa, EARTH_MOON_SYSTEM_ORBIT, 0.0);
+export const EARTH_MOON_BARYCENTER = new Planet('earth-moon-bary', 10, 0, 0x4fa3ff, EARTH_MOON_SYSTEM_ORBIT, 0.0);
 // Earth now orbits barycenter with a tiny wobble orbit
-export const EARTH = new Planet('earth', 6378, 1.0, 0x4fa3ff, EARTH_WOBBLE_ORBIT, 0.2, EARTH_MOON_BARYCENTER);
-export const MARS = new Planet('mars', 3396, 0.10747, 0xff6f4f, MARS_ORBIT, 0.3);
-export const JUPITER = new Planet('jupiter', 71492, 317.73, 0xffe29b, JUPITER_ORBIT, 1.0);
-export const SATURN = new Planet('saturn', 60268, 95.085, 0xffd58f, SATURN_ORBIT, 2.0);
-export const URANUS = new Planet('uranus', 25559, 14.5306, 0x99e6ff, URANUS_ORBIT, 3.0);
-export const NEPTUNE = new Planet('neptune', 24764, 17.075, 0x4f7dff, NEPTUNE_ORBIT, 4.0);
+export const EARTH = new Planet('earth', 6378, 1.0, 0x4fa3ff, EARTH_WOBBLE_ORBIT, 0.0, EARTH_MOON_BARYCENTER);
+export const MARS = new Planet('mars', 3396, 0.10747, 0xff6f4f, MARS_ORBIT, 0.0);
+export const JUPITER = new Planet('jupiter', 71492, 317.73, 0xffe29b, JUPITER_ORBIT, 0.0);
+export const SATURN = new Planet('saturn', 60268, 95.085, 0xffd58f, SATURN_ORBIT, 0.0);
+export const URANUS = new Planet('uranus', 25559, 14.5306, 0x99e6ff, URANUS_ORBIT, 0.0);
+export const NEPTUNE = new Planet('neptune', 24764, 17.075, 0x4f7dff, NEPTUNE_ORBIT, 0.0);
 
 // Moon body uses existing MOON_ORBIT (parent Earth already set there)
-export const MOON = new Moon('moon', EARTH_MOON_BARYCENTER, MOON_ORBIT, 1737.4, 0.01222, 0xb0b0b0, 0.7);
+export const MOON = new Moon('moon', EARTH_MOON_BARYCENTER, MOON_ORBIT, 1737.4, 0.01222, 0xb0b0b0, 0.0);
 
 // Link orbit parent now that EARTH exists
 MOON_ORBIT.parent = EARTH_MOON_BARYCENTER as any;

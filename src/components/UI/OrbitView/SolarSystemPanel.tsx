@@ -5,7 +5,7 @@ import {EARTH_MOON_BARYCENTER, MOON, PLANETS, SUN, EARTH} from "../../../solar_s
 import {METEORS} from "../../../solar_system/data/meteors";
 import {GlowEffect} from "../../../solar_system/entities/GlowEffect";
 import {clearEntities, ENTITIES, registerEntity} from "../../../solar_system/state/entities";
-import {advanceSimulation, resetSimulationTime} from "../../../solar_system/state/simulation";
+import {advanceSimulation, resetSimulationTime, SIM_TIME_DAYS} from "../../../solar_system/state/simulation";
 import {POSITION_SCALE, updateScales, getSimDaysPerPhysicsTick, PHYSICS_TICKS_PER_SECOND} from "../../../solar_system/config/scales";
 import {Orbit} from "../../../solar_system/entities/Orbit";
 import { PathPredictor } from "../../../solar_system/entities/PathPredictor";
@@ -14,6 +14,8 @@ import LaunchButton from './LaunchButton';
 import { computeLagrangePoints } from '../../../solar_system/utils/lagrange';
 import { LagrangePoint } from '../../../solar_system/entities/LagrangePoint';
 import { Vector } from '../../../solar_system/utils/Vector';
+import { processActions } from '../../../solar_system/economy/actions';
+import { economyState } from '../../../solar_system/economy/state';
 
 export const SolarSystemPanel = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -31,7 +33,8 @@ export const SolarSystemPanel = () => {
   const perfDiv = document.createElement('div');
   perfDiv.style.position = 'absolute';
   perfDiv.style.top = '4px';
-  perfDiv.style.left = '6px';
+  // Shift right to clear 300px economy panel width + 12px gap
+  perfDiv.style.left = '8px';
   perfDiv.style.padding = '4px 6px';
   perfDiv.style.background = 'rgba(0,0,0,0.45)';
   perfDiv.style.color = '#fff';
@@ -134,6 +137,13 @@ export const SolarSystemPanel = () => {
       advanceSimulation(physicsDtSimDays); // sim time advanced in days
       for (const e of ENTITIES) { if (!(e instanceof (Orbit as any))) e.update(physicsDtSimSeconds); }
       for (const e of ENTITIES) { if (e instanceof (Orbit as any)) e.update(physicsDtSimSeconds); }
+      // Economy action processing (convert sim days to seconds)
+      if (economyState.actions.length) {
+        processActions(economyState, SIM_TIME_DAYS * 86400);
+      } else {
+        // still keep time in sync even if no actions pending
+        economyState.timeSec = SIM_TIME_DAYS * 86400;
+      }
       // Start any entities added after initialization (e.g., new projectiles)
       if (ENTITIES.length > lastEntityCount) {
         for (let i = lastEntityCount; i < ENTITIES.length; i++) {
@@ -261,7 +271,11 @@ export const SolarSystemPanel = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <div ref={containerRef} style={{ width: '100%', height: '100%' }}><LaunchButton /></div>;
+  return (
+    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <LaunchButton />
+    </div>
+  );
 };
 
 export default SolarSystemPanel;

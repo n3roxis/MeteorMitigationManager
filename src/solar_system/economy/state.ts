@@ -1,12 +1,8 @@
 import { GameEconomyState } from './models';
 
-const zeroFuel = { LEO: 0, DEPLOYED: 0 } as const;
-
 export const economyState: GameEconomyState = {
   timeSec: 0,
   fundsBillion: 40,
-  fuel: { ...zeroFuel },
-  fuelReserved: { ...zeroFuel },
   researchUnlocked: new Set(),
   researchInProgress: new Set(),
   inventory: [],

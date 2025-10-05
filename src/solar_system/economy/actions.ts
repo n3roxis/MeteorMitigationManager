@@ -4,6 +4,15 @@ import { BLUEPRINT_INDEX, RESEARCH_INDEX } from './data';
 let actionCounter = 0;
 const newActionId = () => `act-${++actionCounter}`;
 
+// Utility: ensure an inventory item appears at the top of list (index 0) for UI ordering
+function moveItemToFront(state: GameEconomyState, item: { id: string }) {
+  const idx = state.inventory.indexOf(item as any);
+  if (idx > 0) {
+    state.inventory.splice(idx, 1);
+    state.inventory.unshift(item as any);
+  }
+}
+
 export function processActions(state: GameEconomyState, newTime: number) {
   state.timeSec = newTime;
   for (const act of state.actions) {
@@ -40,6 +49,10 @@ export function launchItem(state: GameEconomyState, itemId: string) {
   // This now represents "Prep Launch" phase only. Actual insertion into orbit will be triggered by global Launch button.
   const item = state.inventory.find(i => i.id === itemId); if (!item || item.state !== 'BUILT') throw new Error('Not launch-prepable');
   const bp = BLUEPRINT_INDEX.get(item.blueprint)!;
+  if (bp.type === 'tsunami-dam-module') {
+    // Hard restriction: dam modules are ground infrastructure only
+    throw new Error('Tsunami dam modules are ground infrastructure and cannot be launched');
+  }
   if (state.fundsBillion < bp.launchCostFunds) throw new Error('Funds');
   state.fundsBillion -= bp.launchCostFunds;
   const prepDur = 7 * 24 * 3600; // 1 week prep
@@ -53,6 +66,71 @@ export function finalizePreparedLaunch(state: GameEconomyState, itemId: string) 
   const bp = item ? BLUEPRINT_INDEX.get(item.blueprint) : undefined;
   item.state = 'AT_LOCATION';
   item.location = bp && bp.type === 'tsunami-dam-module' ? 'DEPLOYED' : 'LEO';
+  moveItemToFront(state, item); // entering space location -> top
+  // Orbital tanker arrives with full tanks
+  if (bp && bp.type === 'orbital-tanker' && item.fuelCapacityTons !== undefined) {
+    item.fuelTons = item.fuelCapacityTons; // refill on each successful launch insertion
+  }
+}
+
+export function deorbitItem(state: GameEconomyState, itemId: string) {
+  const item = state.inventory.find(i=>i.id===itemId);
+  if (!item) throw new Error('Missing');
+  if (!(item.state === 'PREPPED_LANDING')) throw new Error('Not in landing prep');
+  // Finalize landing: return to ground
+  item.state = 'BUILT';
+  item.location = undefined;
+  item.transfer = undefined;
+  if (item.fuelTons !== undefined) item.fuelTons = 0;
+  moveItemToFront(state, item); // re-enter ground at top
+}
+
+export function prepareLanding(state: GameEconomyState, itemId: string) {
+  const item = state.inventory.find(i=>i.id===itemId);
+  if (!item) throw new Error('Missing');
+  if (!(item.state === 'AT_LOCATION' || item.state === 'ACTIVE_LOCATION')) throw new Error('Cannot prep landing from current state');
+  // 1 day landing prep
+  const dur = 1 * 24 * 3600;
+  item.prevStateForLanding = item.state;
+  push(state, { id: newActionId(), kind: 'LAND', startTime: state.timeSec, endTime: state.timeSec + dur, payload: { itemId, duration: dur } });
+}
+
+export function abortPrep(state: GameEconomyState, itemId: string, target: 'LAUNCH' | 'LAND' | 'ACTIVATION') {
+  const item = state.inventory.find(i=>i.id===itemId); if(!item) throw new Error('Missing');
+  if (target==='LAUNCH' && item.state!=='PREPPED_LAUNCH') throw new Error('Not launch prepped');
+  if (target==='LAND' && item.state!=='PREPPED_LANDING') throw new Error('Not landing prepped');
+  if (target==='ACTIVATION' && item.state!=='PREPPED_ACTIVATION') throw new Error('Not activation prepped');
+  const dur = 1 * 24 * 3600; // 1 day abort rollback
+  push(state, { id: newActionId(), kind: 'ABORT_PREP', startTime: state.timeSec, endTime: state.timeSec + dur, payload: { itemId, target } });
+}
+
+export function prepareActivation(state: GameEconomyState, itemId: string) {
+  const item = state.inventory.find(i=>i.id===itemId);
+  if(!item) throw new Error('Missing');
+  const bp = item ? BLUEPRINT_INDEX.get(item.blueprint) : undefined;
+  if(!(bp && (bp.type==='small-impactor'||bp.type==='large-impactor'||bp.type==='giant-impactor'))) throw new Error('Not an impactor');
+  if(item.state!=='AT_LOCATION') throw new Error('Wrong state');
+  const dur = 3 * 24 * 3600; // couple of days (3) prep activation
+  push(state, { id: newActionId(), kind: 'ACTIVATE_PREP', startTime: state.timeSec, endTime: state.timeSec + dur, payload: { itemId, duration: dur } });
+}
+
+export function transferFuelBetweenCraft(state: GameEconomyState, tankerId: string, targetId: string) {
+  // Schedule a 7-day transfer action; actual fuel movement on completion
+  const tanker = state.inventory.find(i=>i.id===tankerId);
+  const target = state.inventory.find(i=>i.id===targetId);
+  if (!tanker || !target) throw new Error('Missing craft');
+  if (tanker.blueprint !== 'orbital-tanker') throw new Error('Not a tanker');
+  if (!(tanker.location && target.location && tanker.location === target.location)) throw new Error('Different locations');
+  const available = tanker.fuelTons || 0;
+  if (available <= 0) return 0;
+  const targetCap = target.fuelCapacityTons ?? 0;
+  const targetCurrent = target.fuelTons ?? 0;
+  const targetMissing = Math.max(0, targetCap - targetCurrent);
+  if (targetMissing <= 0) return 0;
+  const amount = Math.min(available, targetMissing);
+  const dur = 7 * 24 * 3600; // 7 day transfer operation
+  push(state, { id: newActionId(), kind: 'FUEL_TRANSFER', startTime: state.timeSec, endTime: state.timeSec + dur, payload: { tankerId, targetId, amount } });
+  return amount; // return scheduled amount (not yet moved)
 }
 
 export function activateItem(state: GameEconomyState, itemId: string) {
@@ -60,13 +138,17 @@ export function activateItem(state: GameEconomyState, itemId: string) {
   const bp = BLUEPRINT_INDEX.get(item.blueprint)!;
   const fuel = bp.activationFuelTons || 0;
   const rawDur = bp.activationDurationSec || 7*24*3600;
-  // Enforce >= one week even if blueprint shorter (blueprints already increased)
   const dur = Math.max(rawDur, 7*24*3600);
-  if (!(item.state === 'AT_LOCATION')) throw new Error('Wrong state');
-  if (fuel > 0 && item.location) {
-    const loc = item.location as LocationId;
-    if (fuel > state.fuel[loc] - state.fuelReserved[loc]) throw new Error('Fuel at location');
-    state.fuelReserved[loc] += fuel;
+  if (!(item.state === 'AT_LOCATION' || item.state==='PREPPED_ACTIVATION')) throw new Error('Wrong state');
+  if (item.state==='PREPPED_ACTIVATION') {
+    // Transition back to AT_LOCATION to reuse existing activation path
+    item.state='AT_LOCATION';
+  }
+  // Consume onboard craft fuel instead of location pool
+  if (fuel > 0) {
+    if ((item.fuelTons||0) < fuel) throw new Error('Insufficient onboard fuel');
+    // Reserve by subtracting immediately; activation finalization will not subtract from pools further.
+    item.fuelTons = (item.fuelTons||0) - fuel;
   }
   push(state, { id: newActionId(), kind: 'ACTIVATE', startTime: state.timeSec, endTime: state.timeSec + dur, payload: { itemId, fuel } });
 }
@@ -84,54 +166,18 @@ export function transferObject(state: GameEconomyState, itemId: string, destinat
   const origin: LocationId = (item.state === 'AT_LOCATION' || item.state === 'ACTIVE_LOCATION') && item.location ? item.location : 'LEO';
   if (!(item.state === 'AT_LOCATION' || item.state === 'ACTIVE_LOCATION')) throw new Error('State');
   const mass = item.massTons;
-  const fuelCost = computeFuelCostForTransfer(mass, origin, destination);
-  if (fuelCost > state.fuel[origin] - state.fuelReserved[origin]) throw new Error('Fuel origin');
-  state.fuelReserved[origin] += fuelCost;
-  // Transfer durations now weeks/months via computeTransferDuration; enforce at least a week
-  const duration = Math.max(computeTransferDuration(origin, destination), 7*24*3600);
+  const fuelCost = computeFuelCostForTransfer(mass, origin, destination, item.blueprint);
+  // Use onboard craft fuel
+  if ((item.fuelTons||0) < fuelCost) throw new Error('Insufficient onboard fuel');
+  item.fuelTons = (item.fuelTons||0) - fuelCost; // deduct immediately
+  const duration = Math.max(computeTransferDuration(origin, destination, item.blueprint), 7*24*3600);
   item.state = 'IN_TRANSFER';
-  item.transfer = { origin, destination, arrivalTime: state.timeSec + duration, fuelCost };
+  const nowMs = Date.now();
+  item.transfer = { origin, destination, departureTime: state.timeSec, arrivalTime: state.timeSec + duration, fuelCost, realDepartureMs: nowMs, realArrivalMs: nowMs + duration*1000 };
   push(state, { id: newActionId(), kind: 'TRANSFER_OBJECT', startTime: state.timeSec, endTime: state.timeSec + duration, payload: { itemId, origin, destination, fuelCost } });
 }
 
-export function transferFuel(state: GameEconomyState, amount: number, destination: LocationId) {
-  // Move fuel from LEO stock to destination
-  if (amount <= 0) throw new Error('amount');
-  if (amount > state.fuel['LEO'] - state.fuelReserved['LEO']) throw new Error('Fuel LEO');
-  // Simple fuel move (legacy) now at least a week; scale mildly with amount
-  const duration = Math.max(7*24*3600, Math.max(12*3600, amount * 1800));
-  state.fuelReserved['LEO'] += amount; // reserve until completion
-  push(state, { id: newActionId(), kind: 'FUEL_MOVE', startTime: state.timeSec, endTime: state.timeSec + duration, payload: { amount, destination } });
-}
-
-export function moveFuelLPtoLP(state: GameEconomyState, amount: number, origin: LocationId, destination: LocationId) {
-  if (origin === destination) throw new Error('same');
-  if (amount <= 0) throw new Error('amt');
-  if (amount > state.fuel[origin] - state.fuelReserved[origin]) throw new Error('Fuel origin');
-  // Propulsive fuel requirement to move 'amount' of fuel is computed like transferring a payload of that mass.
-  const propNeeded = computeFuelCostForTransfer(amount, origin, destination);
-  if (propNeeded > state.fuel[origin] - state.fuelReserved[origin] - amount) {
-    // Need both the payload fuel (amount) and the propellant margin present at origin.
-    throw new Error('Not enough propellant at origin to move fuel');
-  }
-  // Inter-location fuel movement now takes at least 2 weeks, scaling with amount
-  const duration = Math.max(14*24*3600, Math.max(24*3600, amount * 3600));
-  // Reserve BOTH the payload amount plus propellant so UI reflects locked resources.
-  state.fuelReserved[origin] += amount + propNeeded;
-  push(state, { id: newActionId(), kind: 'FUEL_MOVE', startTime: state.timeSec, endTime: state.timeSec + duration, payload: { amount, origin, destination, propNeeded } });
-}
-
-// Direct purchase of fuel to LEO: cost in funds is linear per ton.
-export function buyFuelToLEO(state: GameEconomyState, tons: number, costPerTonBillion = 0.05) {
-  if (tons <= 0) throw new Error('tons');
-  const cost = tons * costPerTonBillion;
-  if (state.fundsBillion < cost) throw new Error('Funds');
-  // Deduct funds immediately, but fuel arrives after duration
-  state.fundsBillion -= cost;
-  // Fuel purchase lead time: at least one week; scale with tonnage (half-day per ton)
-  const duration = Math.max(7*24*3600, Math.max(12*3600, tons * 12 * 3600));
-  push(state, { id: newActionId(), kind: 'FUEL_PURCHASE', startTime: state.timeSec, endTime: state.timeSec + duration, payload: { tons, cost } });
-}
+// Removed location fuel logistics (transfer/move/purchase) in favor of per-craft fuel only
 
 function finalizeAction(state: GameEconomyState, act: ScheduledAction) {
   act.status = 'DONE';
@@ -145,6 +191,29 @@ function finalizeAction(state: GameEconomyState, act: ScheduledAction) {
     case 'BUILD': {
       const item = state.inventory.find(i => i.id === act.payload.itemId);
       if (item && item.state === 'BUILDING') item.state = 'BUILT'; // Remains on ground (no launch path) even for tsunami-dam-module
+      if (item && item.state === 'BUILT') {
+        const bp = BLUEPRINT_INDEX.get(item.blueprint);
+        if (bp) {
+          let cap: number;
+            switch (bp.type) {
+              case 'small-impactor':
+                cap = 2; // custom override
+                break;
+              case 'orbital-tanker':
+                cap = 4; // custom override
+                break;
+              default:
+                cap = (bp.activationFuelTons || 0) > 0 ? (bp.activationFuelTons || 0) * 2 : 1;
+            }
+            item.fuelCapacityTons = cap;
+            if (bp.type === 'orbital-tanker') {
+              item.fuelTons = cap; // tanker starts full
+            } else {
+              item.fuelTons = 0; // others start empty
+            }
+        }
+        moveItemToFront(state, item); // new ground asset appears at top
+      }
       break;
     }
     case 'LAUNCH': {
@@ -152,24 +221,40 @@ function finalizeAction(state: GameEconomyState, act: ScheduledAction) {
       if (item && item.state === 'BUILT') { item.state = 'PREPPED_LAUNCH'; }
       break;
     }
+    case 'LAND': {
+      const item = state.inventory.find(i => i.id === act.payload.itemId);
+      if (item && (item.prevStateForLanding === 'AT_LOCATION' || item.prevStateForLanding === 'ACTIVE_LOCATION')) { item.state = 'PREPPED_LANDING'; }
+      break;
+    }
+    case 'ACTIVATE_PREP': {
+      const item = state.inventory.find(i=>i.id===act.payload.itemId);
+      if (item && item.state==='AT_LOCATION') { item.state = 'PREPPED_ACTIVATION'; }
+      break;
+    }
+    case 'ABORT_PREP': {
+      const { itemId, target } = act.payload as { itemId: string; target: 'LAUNCH' | 'LAND' | 'ACTIVATION' };
+      const it = state.inventory.find(i=>i.id===itemId);
+      if (it) {
+        if (target==='LAUNCH' && it.state==='PREPPED_LAUNCH') it.state='BUILT';
+        if (target==='LAND' && it.state==='PREPPED_LANDING') it.state = it.prevStateForLanding === 'ACTIVE_LOCATION' ? 'ACTIVE_LOCATION' : 'AT_LOCATION';
+        if (target==='ACTIVATION' && it.state==='PREPPED_ACTIVATION') it.state='AT_LOCATION';
+      }
+      break;
+    }
     case 'ACTIVATE': {
-      const { itemId, fuel } = act.payload;
+      const { itemId } = act.payload;
       const it = state.inventory.find(i => i.id === itemId);
       if (it) {
         const bp = BLUEPRINT_INDEX.get(it.blueprint)!;
-        if (fuel > 0 && it.location) {
-          const loc = it.location as LocationId;
-            state.fuel[loc] -= fuel; state.fuelReserved[loc] -= fuel;
-        }
+        // Onboard fuel already deducted at scheduling; nothing to remove from pools.
         // If impactor: upon activation, we consider it departing immediately (transition to in-transfer / en route)
-        if (bp.type === 'small-impactor' || bp.type === 'large-impactor') {
+        if (bp.type === 'small-impactor' || bp.type === 'large-impactor' || bp.type === 'giant-impactor') {
           if (it.state === 'AT_LOCATION' && it.location) {
-            // Create a notional transfer representing its intercept trajectory.
-            // Destination left as same location for now; arrival far future placeholder.
             const origin = it.location as LocationId;
-            const duration = 120 * 24 * 3600; // 120 days placeholder mission flight
+            const duration = 120 * 24 * 3600; // placeholder mission duration
             it.state = 'IN_TRANSFER';
-            it.transfer = { origin, destination: origin, arrivalTime: state.timeSec + duration, fuelCost: 0 };
+            const nowMs = Date.now();
+            it.transfer = { origin, destination: 'IMPACT' as any, departureTime: state.timeSec, arrivalTime: state.timeSec + duration, fuelCost: 0, realDepartureMs: nowMs, realArrivalMs: nowMs + duration*1000 };
           }
         } else if (bp.type === 'laser-platform') {
           if (it.state === 'AT_LOCATION') it.state = 'ACTIVE_LOCATION';
@@ -186,48 +271,80 @@ function finalizeAction(state: GameEconomyState, act: ScheduledAction) {
       break;
     }
     case 'TRANSFER_OBJECT': {
-      const { itemId, destination, origin, fuelCost } = act.payload as { itemId: string; destination: LocationId; origin: LocationId; fuelCost: number };
+      const { itemId, destination } = act.payload as { itemId: string; destination: LocationId; origin: LocationId; fuelCost: number };
       const item = state.inventory.find(i => i.id === itemId);
-      state.fuel[origin] -= fuelCost; state.fuelReserved[origin] -= fuelCost;
-      if (item) { item.state = 'AT_LOCATION'; item.location = destination; item.transfer = undefined; }
+      if (item) { item.state = 'AT_LOCATION'; item.location = destination; item.transfer = undefined; moveItemToFront(state, item); }
       break;
     }
-    case 'FUEL_MOVE': {
-      const { amount, destination, origin, propNeeded } = act.payload as { amount: number; destination: LocationId; origin?: LocationId; propNeeded?: number };
-      if (origin) {
-        const o = origin as LocationId; const d = destination as LocationId;
-        // Deduct payload and propellant reserved
-        if (propNeeded) state.fuel[o] -= propNeeded;
-        state.fuel[o] -= amount;
-        state.fuelReserved[o] -= amount + (propNeeded || 0);
-        state.fuel[d] += amount; // payload arrives entirely
-      } else {
-        // Legacy path (LEO purchase or LEO→dest simple send) should not appear now; kept for safety.
+    case 'FUEL_TRANSFER': {
+      const { tankerId, targetId, amount } = act.payload as { tankerId: string; targetId: string; amount: number };
+      const tanker = state.inventory.find(i=>i.id===tankerId);
+      const target = state.inventory.find(i=>i.id===targetId);
+      if (tanker && target && tanker.location && target.location && tanker.location===target.location && amount>0) {
+        const deliverable = Math.min(amount, tanker.fuelTons||0);
+        const targetCap = target.fuelCapacityTons ?? 0;
+        const targetCurrent = target.fuelTons ?? 0;
+        const targetMissing = Math.max(0, targetCap - targetCurrent);
+        const actual = Math.min(deliverable, targetMissing);
+        if (actual>0) {
+          tanker.fuelTons = (tanker.fuelTons||0) - actual;
+          target.fuelTons = targetCurrent + actual;
+        }
       }
       break;
     }
-    case 'FUEL_PURCHASE': {
-      const { tons } = act.payload as { tons: number };
-      state.fuel['LEO'] += tons;
-      break;
+    // FUEL_MOVE and FUEL_PURCHASE removed
+  }
+  // After handling this finalized action, purge any impactors whose mission has completed (destination IMPACT reached)
+  for (let i = state.inventory.length -1; i>=0; i--) {
+    const it = state.inventory[i];
+    if (it.state==='IN_TRANSFER' && it.transfer && (it.transfer as any).destination==='IMPACT' && it.transfer.arrivalTime <= state.timeSec) {
+      state.inventory.splice(i,1);
     }
   }
 }
 
-export function computeFuelCostForTransfer(massTons: number, origin: LocationId, destination: LocationId) {
-  if (origin === destination) return massTons * 0.1; // small reposition cost
-  // LEO <-> DEPLOYED transfer cost flat factor
-  return massTons * 0.6; // aggregated propellant requirement
+// Adjacency graph for kinetic impactor change-location feature
+const IMPACTOR_GRAPH: Record<LocationId, LocationId[]> = {
+  'LEO': ['SE_L1','SE_L2','DEPLOYED'],
+  'SE_L1': ['LEO','SE_L2','SE_L4','SE_L5'],
+  'SE_L2': ['LEO','SE_L1','SE_L4','SE_L5'],
+  'SE_L3': ['SE_L4','SE_L5'],
+  'SE_L4': ['SE_L1','SE_L2','SE_L3'],
+  'SE_L5': ['SE_L1','SE_L2','SE_L3'],
+  // DEPLOYED kept separate (non-graph transfers use legacy logic)
+  'DEPLOYED': ['LEO']
+};
+
+export function computeFuelCostForTransfer(massTons: number, origin: LocationId, destination: LocationId, blueprint?: BuildableType) {
+  if (origin === destination) return massTons * 0.05; // trivial adjustment cost
+  const isImpactor = blueprint === 'small-impactor' || blueprint === 'large-impactor' || blueprint === 'giant-impactor';
+  if (isImpactor && IMPACTOR_GRAPH[origin]?.includes(destination)) {
+    // Fraction of mass scaling with relative difficulty: default 0.4, with special lower for nearby (LEO<->L1/L2) 0.25
+    let factor = 0.4;
+    if ((origin==='LEO' && (destination==='SE_L1' || destination==='SE_L2')) || ((destination==='LEO') && (origin==='SE_L1' || origin==='SE_L2'))) factor = 0.25;
+    if ((origin==='SE_L1' || origin==='SE_L2') && (destination==='SE_L4' || destination==='SE_L5')) factor = 0.35;
+    if ((origin==='SE_L4' || origin==='SE_L5') && (destination==='SE_L3')) factor = 0.3;
+    if (origin==='SE_L3' && (destination==='SE_L4' || destination==='SE_L5')) factor = 0.3;
+    return massTons * factor;
+  }
+  // Legacy path (LEO <-> DEPLOYED or anything not in graph)
+  return massTons * 0.6;
 }
-function computeTransferDuration(origin: LocationId, destination: LocationId) {
-  if (origin === destination) return 7 * 24 * 3600; // one week internal ops
-  return 60 * 24 * 3600; // 60 days between LEO and DEPLOYED
+function computeTransferDuration(origin: LocationId, destination: LocationId, blueprint?: BuildableType) {
+  if (origin === destination) return 7 * 24 * 3600;
+  const isImpactor = blueprint === 'small-impactor' || blueprint === 'large-impactor' || blueprint === 'giant-impactor';
+  if (isImpactor && IMPACTOR_GRAPH[origin]?.includes(destination)) {
+    // Base durations in days relative to delta-v complexity
+    let days = 60; // default baseline
+    if ((origin==='LEO' && (destination==='SE_L1' || destination==='SE_L2')) || ((destination==='LEO') && (origin==='SE_L1' || origin==='SE_L2'))) days = 30;
+    else if ((origin==='SE_L1' || origin==='SE_L2') && (destination==='SE_L4' || destination==='SE_L5')) days = 90;
+    else if ((origin==='SE_L4' || origin==='SE_L5') && (destination==='SE_L3')) days = 120;
+    else if (origin==='SE_L3' && (destination==='SE_L4' || destination==='SE_L5')) days = 120;
+    return days * 24 * 3600;
+  }
+  return 60 * 24 * 3600;
 }
 
 // Preview helpers (pure functions)
-export const previewFuelPurchaseCost = (tons: number, costPerTonBillion = 0.05) => tons > 0 ? tons * costPerTonBillion : 0;
-export const previewFuelMovePropellant = (tons: number, origin: LocationId, dest: LocationId) => {
-  if (tons <= 0) return 0;
-  return computeFuelCostForTransfer(tons, origin, dest);
-};
-export const previewItemTransferPropellant = (massTons: number, origin: LocationId, dest: LocationId) => previewFuelMovePropellant(massTons, origin, dest);
+export const previewItemTransferPropellant = (massTons: number, origin: LocationId, dest: LocationId) => computeFuelCostForTransfer(massTons, origin, dest);

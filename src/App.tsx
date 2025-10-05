@@ -2,7 +2,7 @@ import SolarSystemPanel from './components/UI/OrbitView/SolarSystemPanel';
 import WorldMapPanel from './components/UI/MapView/WorldMapPanel';
 import EconomyPanel from './components/UI/OrbitView/EconomyPanel';
 import { economyState } from './solar_system/economy/state';
-import { finalizePreparedLaunch } from './solar_system/economy/actions';
+import { finalizePreparedLaunch, deorbitItem, activateItem } from './solar_system/economy/actions';
 import React from 'react';
 
 const App = () => {
@@ -13,6 +13,10 @@ const App = () => {
   },[]);
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '50% 50%', gridTemplateRows: '50% 50%', width: '100vw', height: '100vh', margin: 0, background: '#121212', color: '#eee', fontFamily: 'system-ui, Arial, sans-serif', overflow: 'hidden', position:'relative' }}>
+      {/* Funds overlay top center */}
+      <div style={{ position:'absolute', top:6, left:'50%', transform:'translateX(-50%)', background:'rgba(24,34,44,0.9)', padding:'4px 10px 5px', border:'1px solid #2e4352', borderRadius:6, fontSize:12, fontWeight:600, letterSpacing:0.6, boxShadow:'0 2px 6px -2px #000, 0 0 0 1px #253643 inset', zIndex:1000 }}>
+        Funds: {economyState.fundsBillion.toFixed(2)}B
+      </div>
       {/* Top Left: Solar System */}
       <div style={{ position: 'relative', borderRight: '1px solid #1d2530', borderBottom: '1px solid #1d2530' }}>
         <SolarSystemPanel />
@@ -32,13 +36,16 @@ const App = () => {
           <div style={{ flex:'0 0 50%', height:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, letterSpacing:0.5, opacity:0.55 }}>Controls</div>
           <div style={{ flex:'0 0 50%', height:'50%', position:'relative', display:'flex', alignItems:'center', justifyContent:'center' }}>
             {(() => {
-              const prepped = economyState.inventory.find(i=>i.state==='PREPPED_LAUNCH');
-              const disabled = !prepped;
-              const bpName = prepped ? (()=>{ const bp = prepped && prepped.blueprint; return bp ? bp.replace(/-/g,' ') : ''; })() : '';
+              const preppedLaunch = economyState.inventory.find(i=>i.state==='PREPPED_LAUNCH');
+              const preppedLanding = economyState.inventory.find(i=>i.state==='PREPPED_LANDING');
+              const preppedActivation = economyState.inventory.find(i=>i.state==='PREPPED_ACTIVATION');
+              const disabled = !preppedLaunch && !preppedLanding && !preppedActivation;
+              const activeItem = preppedLaunch || preppedLanding || preppedActivation;
+              const bpName = activeItem ? (()=>{ const bp = activeItem.blueprint; return bp ? bp.replace(/-/g,' ') : ''; })() : '';
               return (
               <button
                 disabled={disabled}
-                aria-label="Launch"
+                aria-label={preppedLanding? 'Land' : 'Launch'}
                 style={{
                   width:140,
                   height:140,
@@ -63,12 +70,16 @@ const App = () => {
                   opacity: disabled ? 0.55 : 1,
                   transition:'opacity 160ms, box-shadow 260ms'
                 }}
-                onClick={()=>{ if(!disabled && prepped){ finalizePreparedLaunch(economyState, prepped.id); } }}
+                onClick={()=>{ if(!disabled){ if(preppedLaunch){ finalizePreparedLaunch(economyState, preppedLaunch.id); } else if(preppedLanding){ deorbitItem(economyState, preppedLanding.id); } else if (preppedActivation){ activateItem(economyState, preppedActivation.id); } } }}
               >
                 {!disabled && (
                   <>
-                    <span style={{ fontSize:22, letterSpacing:1.5 }}>LAUNCH</span>
-                    <span style={{ fontSize:10, marginTop:6, fontWeight:600, letterSpacing:0.8, textTransform:'uppercase', opacity:0.9, whiteSpace:'nowrap', maxWidth:120, overflow:'hidden', textOverflow:'ellipsis', textAlign:'center' }}>{bpName}</span>
+                    <span style={{ fontSize:22, letterSpacing:1.5 }}>
+                      {preppedLanding? 'DEORBIT' : (preppedLaunch ? 'LAUNCH' : 'ACTIVATE')}
+                    </span>
+                    <span style={{ fontSize:10, marginTop:6, fontWeight:600, letterSpacing:0.8, textTransform:'uppercase', opacity:0.9, whiteSpace:'nowrap', maxWidth:120, overflow:'hidden', textOverflow:'ellipsis', textAlign:'center' }}>
+                      {(preppedLanding? 'Deorbit ' : (preppedLaunch? 'Launch ' : 'Activate ')) + bpName}
+                    </span>
                   </>
                 )}
               </button>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { economyState } from '../../../solar_system/economy/state';
 import { RESEARCH_DEFS, BLUEPRINTS, isUnlocked } from '../../../solar_system/economy/data';
-import { startResearch, startBuild, launchItem } from '../../../solar_system/economy/actions';
+import { startResearch, startBuild, transferFuelBetweenCraft, prepareLanding, abortPrep, transferObject, launchItem, abortPrep as abortLaunchPrep, prepareActivation, activateItem } from '../../../solar_system/economy/actions';
 import { GameEconomyState, LocationId } from '../../../solar_system/economy/models';
 
 // Lightweight subscription (animation frame) to keep progress bars and timers live
@@ -21,17 +21,139 @@ function useEconomy(): GameEconomyState {
   return economyState;
 }
 
+// Helper component logic extracted to reuse in grouping
+function InventoryRow(props:{ it:any; isGround:boolean; locId:LocationId; setCommandContext: any }) {
+  const { it, isGround, locId, setCommandContext } = props;
+  const bp = BLUEPRINTS.find(b=>b.type===it.blueprint)!;
+  // Global single-prep lock (launch, landing, activation)
+  const globalPrepLock = economyState.actions.some(a=> (a.kind==='LAUNCH' || a.kind==='LAND' || a.kind==='ACTIVATE_PREP' || a.kind==='ABORT_PREP') && a.status==='PENDING')
+    || economyState.inventory.some(i=> i.state==='PREPPED_LAUNCH' || i.state==='PREPPED_LANDING' || i.state==='PREPPED_ACTIVATION');
+  const tag = it.state === 'ACTIVE_LOCATION' ? ' (A)' : '';
+  const activeColor = it.state === 'ACTIVE_LOCATION' ? '#2ea84d' : (it.state === 'IN_TRANSFER' ? '#cfa640' : '#d4dde4');
+  const clickable = !isGround; // space items enter command panel
+  return (
+    <div key={it.id}
+      onClick={()=>{ if(clickable) setCommandContext({ location: locId as LocationId, itemId: it.id, mode:'root' }); }}
+      style={{
+        marginBottom:3,
+        padding:'2px 3px 3px',
+        background:'#202b35',
+        border:'1px solid #2d3a46',
+        borderRadius:3,
+        display:'flex',
+        flexDirection:'row',
+        alignItems:'center',
+        gap:4,
+        position:'relative',
+        cursor: clickable ? 'pointer' : 'default'
+      }}>
+      <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', position:'relative' }}>
+        <div style={{ fontSize:10, fontWeight:600, letterSpacing:0.3, color:activeColor, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', position:'relative' }}>{bp.name}{tag}
+          {it.state==='IN_TRANSFER' && it.transfer && (
+            <span style={{ marginLeft:4, fontSize:9, fontWeight:600, color:'#cfa640' }}>→ { (it.transfer as any).destination==='IMPACT' ? 'Impact' : it.transfer.destination }</span>
+          )}
+        </div>
+  {( (bp as any).type!=='tsunami-dam-module') && !isGround && it.fuelCapacityTons !== undefined && it.state!=='IN_TRANSFER' && (()=> {
+          const fuelNow = (it.fuelTons||0); const cap = (it.fuelCapacityTons||1); const ratio = Math.max(0, Math.min(1, fuelNow/cap));
+          const r = Math.round(0x40 + (0xff-0x40)*ratio); const g = Math.round(0x29 + (0x9b-0x29)*ratio); const b = Math.round(0x15 + (0x2f-0x15)*ratio);
+          const color = `rgb(${r},${g},${b})`;
+          return (
+            <div style={{ position:'absolute', top:0, right:0, display:'flex', alignItems:'center', gap:3 }}>
+              <span style={{ fontSize:9, fontWeight:600, color:'#c9c0b8', letterSpacing:0.3 }}>{fuelNow.toFixed(1)}t</span>
+              <div style={{ position:'relative', width:28, height:10, border:'1px solid #4e3a27', borderRadius:2, background:'#0f151b', boxShadow:'0 0 0 1px #23170f inset' }}>
+                <div style={{ position:'absolute', top:1, bottom:1, left:1, width: ratio*(28-2), background: color, borderRadius:1, transition:'width 220ms, background-color 220ms' }} />
+              </div>
+            </div>
+          );
+        })()}
+        {it.state==='IN_TRANSFER' && it.transfer && (()=> {
+          const tr = it.transfer as any;
+            const arrivalSim = tr.arrivalTime as number;
+            const departureSim = tr.departureTime as number;
+            const totalSim = Math.max(1, arrivalSim - departureSim);
+            const nowSim = economyState.timeSec;
+            const progressSim = totalSim>0 ? (nowSim - departureSim)/totalSim : 0;
+            const realDep = tr.realDepartureMs as number | undefined;
+            const realArr = tr.realArrivalMs as number | undefined;
+            const nowMs = Date.now();
+            let progressReal = 0;
+            if (realDep && realArr && realArr>realDep) progressReal = (nowMs - realDep)/(realArr - realDep);
+            const progress = Math.max(0, Math.min(1, Math.max(progressSim, progressReal)));
+            return (
+              <div style={{ position:'absolute', inset:0, zIndex:-1, overflow:'hidden', borderRadius:3 }}>
+                <div style={{ position:'absolute', top:0, bottom:0, left:0, width:(progress*100)+'%', background:'linear-gradient(90deg,#33404a,#566b79)', opacity:0.42, transition:'width 1.2s linear' }} />
+              </div>
+            );
+        })()}
+        {/* Additional inline buttons (abort landing / launch prep) retained from original UI only for ground or landing states */}
+  {isGround && (it.state==='BUILT' || it.state==='PREPPED_LAUNCH') && (bp as any).type!=='tsunami-dam-module' && (()=> {
+          const launchAction = economyState.actions.find(a=> a.kind==='LAUNCH' && a.status==='PENDING' && a.payload.itemId===it.id);
+          const abortAction = economyState.actions.find(a=> a.kind==='ABORT_PREP' && a.status==='PENDING' && a.payload.itemId===it.id && a.payload.target==='LAUNCH');
+          const isPrepping = !!launchAction; const isPrepped = it.state==='PREPPED_LAUNCH'; const isAborting = !!abortAction;
+          const disabled = (isPrepping && !isPrepped) || isAborting || (!isPrepped && !isPrepping && globalPrepLock && !isAborting);
+          const activeAct = (isPrepping && !isPrepped) ? launchAction : (isAborting ? abortAction : null);
+          const pct = activeAct ? Math.min(1, Math.max(0, (economyState.timeSec - activeAct.startTime)/(activeAct.endTime - activeAct.startTime))) : 0;
+          const label = isPrepped ? (isAborting? '...' : 'ABORT LAUNCH') : (isPrepping? '...' : 'Prep Launch');
+          return (
+            <div style={{ marginTop:4, display:'flex', gap:4 }}>
+              <button
+                disabled={disabled}
+                onClick={(e)=> { e.stopPropagation(); try { if(isPrepped){ if(!isAborting) { abortLaunchPrep(economyState, it.id, 'LAUNCH'); notify(); } } else if(!isPrepping && !globalPrepLock){ launchItem(economyState, it.id); notify(); } } catch(err){ console.warn(err);} }}
+                className='progress-btn'
+                style={{ flex:1, padding:'3px 4px', borderRadius:3, border:'1px solid '+(isPrepped? '#7a2d2d':'#345061'), background:isPrepped? '#411b1b':'#25323e', color:isPrepped? '#ff7878':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:disabled? 'default':'pointer', fontSize:9, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', overflow:'hidden', opacity:disabled?0.6:1 }}>
+                { ((isPrepping && !isPrepped) || isAborting) && <div className='progress-fill' style={{ width:(pct*100)+'%', background:isPrepped? 'linear-gradient(90deg,#ff9898,#ff5a5a)' : 'linear-gradient(90deg,#4aa9ff,#1485ff)', opacity:0.85 }} /> }
+                <span style={{ minWidth:20, textAlign:'left' }} className='label-layer'>{isPrepped? '' : (isPrepping? '' : '7d')}</span>
+                <span style={{ flex:1, textAlign:'center' }} className='label-layer'>{label}</span>
+                <span style={{ minWidth:30, textAlign:'right', opacity:isPrepped?0:1 }} className='label-layer'>{isPrepped? '' : (bp.launchCostFunds?.toFixed(2)+'B')}</span>
+              </button>
+            </div>
+          );
+        })()}
+        {/* Dam modules have no launch button; no badge shown per request */}
+        {!isGround && (bp.type==='small-impactor'||bp.type==='large-impactor'||bp.type==='giant-impactor') && (()=> {
+          // Inline display ONLY for Abort Activation (after prep completes or during abort). Prep lives in command submenu.
+          if (it.state==='IN_TRANSFER') return null;
+          const abortAct = economyState.actions.find(a=> a.kind==='ABORT_PREP' && a.status==='PENDING' && a.payload.itemId===it.id && a.payload.target==='ACTIVATION');
+          const isPrepped = it.state==='PREPPED_ACTIVATION';
+          const isAborting = !!abortAct;
+          if (!isPrepped && !isAborting) return null; // hide unless we have something to abort
+          const activeAct = isAborting ? abortAct : null;
+          const pct = activeAct ? Math.min(1, Math.max(0,(economyState.timeSec - activeAct.startTime)/(activeAct.endTime - activeAct.startTime))) : 0;
+          return (
+            <div style={{ marginTop:4, display:'flex', gap:4 }}>
+              <button
+                disabled={isAborting}
+                onClick={(e)=> { e.stopPropagation(); try { if(isPrepped && !isAborting){ abortPrep(economyState, it.id, 'ACTIVATION'); notify(); } } catch(err){ console.warn(err);} }}
+                className='progress-btn'
+                style={{ flex:1, padding:'3px 4px', borderRadius:3, border:'1px solid #7a2d2d', background:'#411b1b', color:'#ff7878', fontWeight:600, letterSpacing:0.35, cursor:isAborting? 'default':'pointer', fontSize:9, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', overflow:'hidden', opacity:isAborting?0.75:1 }}>
+                { isAborting && <div className='progress-fill' style={{ width:(pct*100)+'%', background:'linear-gradient(90deg,#ff9898,#ff5a5a)', opacity:0.85 }} /> }
+                <span style={{ minWidth:20, textAlign:'left' }} className='label-layer'></span>
+                <span style={{ flex:1, textAlign:'center' }} className='label-layer'>{isAborting? '...' : 'ABORT ACTIVATION'}</span>
+                <span style={{ minWidth:30, textAlign:'right', opacity:0 }} className='label-layer'></span>
+              </button>
+            </div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+}
+
 export const EconomyPanel: React.FC = () => {
   const state = useEconomy();
   // Ground construct mode toggle
   const [constructMode, setConstructMode] = React.useState(false);
   // Command mode: which location panel is showing commands and for which item
-  const [commandContext, setCommandContext] = React.useState<{ location: LocationId; itemId: string; mode: 'root' | 'transfer' } | null>(null);
+  const [commandContext, setCommandContext] = React.useState<{ location: LocationId; itemId: string; mode: 'root' | 'transfer' | 'relocate' } | null>(null);
   const researchInQueue = new Set(state.actions.filter(a => a.kind==='RESEARCH' && a.status==='PENDING').map(a => a.payload.researchId));
   const canStartResearch = (id: string) => !state.researchUnlocked.has(id as any) && !researchInQueue.has(id);
   const doResearch = (id: string) => { try { startResearch(state, id as any); notify(); } catch(e){ console.warn(e);} };
   const anyLaunchActive = state.actions.some(a => a.kind==='LAUNCH' && a.status==='PENDING');
-  const anyPrepped = state.inventory.some(i=>i.state==='PREPPED_LAUNCH');
+  const anyLandingActive = state.actions.some(a => a.kind==='LAND' && a.status==='PENDING');
+  const anyActivationPrepActive = state.actions.some(a => a.kind==='ACTIVATE_PREP' && a.status==='PENDING');
+  const anyAbortActive = state.actions.some(a => a.kind==='ABORT_PREP' && a.status==='PENDING');
+  const anyPrepActive = anyLaunchActive || anyLandingActive || anyActivationPrepActive || anyAbortActive;
+  const anyLaunchPrepped = state.inventory.some(i=>i.state==='PREPPED_LAUNCH');
   // Show all research (completed stay in carousel)
   const allResearch = RESEARCH_DEFS;
   const anyResearchActive = state.actions.some(a => a.kind==='RESEARCH' && a.status==='PENDING');
@@ -65,7 +187,22 @@ export const EconomyPanel: React.FC = () => {
   const locOrder: LocationId[] = ['DEPLOYED','LEO'];
   const renderPanel = (locId: LocationId | 'GROUND') => {
     const isGround = locId === 'GROUND';
-    const atLoc = state.inventory.filter(i => !isGround && i.location===locId && (i.state==='AT_LOCATION' || i.state==='ACTIVE_LOCATION' || i.state==='IN_TRANSFER'));
+  const atLoc = state.inventory.filter(i => {
+    if (isGround) return false;
+    const eligibleState = (i.state==='AT_LOCATION' || i.state==='ACTIVE_LOCATION' || i.state==='IN_TRANSFER' || i.state==='PREPPED_LANDING' || i.state==='PREPPED_ACTIVATION');
+    if (!eligibleState) return false;
+    if (locId === 'LEO') {
+      // LEO panel should only show items actually at LEO and not en route to a Lagrange point
+      if (i.state==='IN_TRANSFER' && i.transfer && i.transfer.destination !== 'LEO') return false; // migrating away -> show in DEPLOYED
+      return i.location === 'LEO';
+    }
+    // DEPLOYED panel aggregates any non-LEO space locations and all in-transfer items heading to non-LEO
+    if (i.state==='IN_TRANSFER' && i.transfer) {
+      // Show all in-transfer items (both outbound from LEO and inbound to LEO) under DEPLOYED 'En Route' group.
+      return true;
+    }
+    return i.location !== 'LEO' && i.location !== undefined; // stationed at any Lagrange region
+  });
   const groundItems = state.inventory.filter(i=> (i.state==='BUILT' || i.state==='PREPPED_LAUNCH'));
     // If ground and in construct mode, show blueprint list instead of inventory
     if (isGround && constructMode) {
@@ -94,12 +231,12 @@ export const EconomyPanel: React.FC = () => {
                       <button
                         disabled={disabled}
                         className="progress-btn"
-                        onClick={()=>{ if(!disabled){ try { startBuild(state, bp.type); notify(); } catch(e){ console.warn(e);} } }}
+                        onClick={()=>{ if(!disabled){ try { startBuild(state, bp.type); setConstructMode(false); notify(); } catch(e){ console.warn(e);} } }}
                         style={{ marginTop:0, width:'100%', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'3px 4px', position:'relative', background:'#283744', border:'1px solid #345061', borderRadius:3, color:'#d4dde4', cursor:disabled?'default':'pointer', opacity:disabled?0.55:1 }}>
                         {thisActive && <div className="progress-fill" style={{ width:(pct*100)+'%', background:'linear-gradient(90deg,#34b4ff,#1485ff)' }} />}
-                        <span style={{ minWidth:34, textAlign:'left' }} className="label-layer">{bp.buildCostFunds.toFixed(2)}B</span>
+                        <span style={{ minWidth:28, textAlign:'left' }} className="label-layer">{durDays}</span>
                         <span style={{ flex:1, textAlign:'center', fontWeight:600, letterSpacing:0.25 }} className="label-layer">{labelMid}</span>
-                        <span style={{ minWidth:28, textAlign:'right' }} className="label-layer">{durDays}</span>
+                        <span style={{ minWidth:34, textAlign:'right' }} className="label-layer">{bp.buildCostFunds.toFixed(2)}B</span>
                       </button>
                       {/* Overlay if other build active */}
                       {anyBuildActive && !thisActive && (
@@ -119,66 +256,335 @@ export const EconomyPanel: React.FC = () => {
       const item = state.inventory.find(i=>i.id===commandContext.itemId);
       const bp = item ? BLUEPRINTS.find(b=>b.type===item.blueprint) : undefined;
       // Transfer preview targets
-      const otherLocation: LocationId = locId === 'LEO' ? 'DEPLOYED' : 'LEO';
-      let transferFuelCost = 0; let transferDurationDays = 0; let canTransfer = false;
-      if (item && (item.state==='AT_LOCATION' || item.state==='ACTIVE_LOCATION')) {
-        // Inline lightweight preview replicating computeFuelCostForTransfer logic: mass * 0.6 if changing region else 0.1
-        const mass = item.massTons;
-        transferFuelCost = locId === otherLocation ? mass * 0.1 : mass * 0.6; // internal vs cross-region
-        transferDurationDays = locId === otherLocation ? 7 : 60; // matches computeTransferDuration
-        // Available fuel check
-        const available = state.fuel[locId] - state.fuelReserved[locId];
-  // item.state already narrowed to AT_LOCATION or ACTIVE_LOCATION here
-  canTransfer = transferFuelCost <= available;
-      }
+  // Simple otherLocation preview variable removed (legacy LEO<->DEPLOYED). Adjacency routes handled in submenu.
+      // Legacy simple LEO<->DEPLOYED transfer preview removed; adjacency-based submenu now computes per-route costs directly.
   const activationFuel = bp?.activationFuelTons || 0;
   const activationDurationDays = bp?.activationDurationSec ? Math.max(bp.activationDurationSec, 7*24*3600)/86400 : 7; // ensure min week
-  const canActivate = item && item.state==='AT_LOCATION' && bp && activationFuel <= (item.location ? (state.fuel[item.location]-state.fuelReserved[item.location]) : 0);
+  const canActivate = item && item.state==='AT_LOCATION' && bp && activationFuel <= (item.fuelTons||0);
       // Lagrange point list for transfer menu
-      const lagrangePoints = ['SE_L1','SE_L2','SE_L4','SE_L5'];
+  const lagrangePoints = ['SE_L1','SE_L2','SE_L4','SE_L5'];
+  const isTanker = bp?.type === 'orbital-tanker';
+  // Tanker specific: entering transfer fuel selection mode instead of generic activation
+  const otherCraftSameLoc = item && item.location ? state.inventory.filter(o => o.id!==item.id && o.location===item.location && (o.state==='AT_LOCATION' || o.state==='ACTIVE_LOCATION')) : [];
+  const isTransferMode = commandContext.mode==='transfer' || commandContext.mode==='relocate';
       return (
-        <div key={locId} style={{ flex:'1 1 0', minWidth:0, background:'#1a222c', border:'1px solid #2a3644', borderRadius:4, padding:'4px 6px', display:'flex', flexDirection:'column' }}>
+  <div key={locId} onMouseLeave={()=> setCommandContext(null)} style={{ flex:'1 1 0', minWidth:0, background: isTransferMode? '#294454' : '#22303c', border:'1px solid '+(isTransferMode?'#426d80':'#385166'), boxShadow: isTransferMode? '0 0 0 1px #335363 inset, 0 0 14px -2px #3d6f82' : '0 0 0 1px #2b3d4a inset, 0 0 12px -2px #2f4d61', borderRadius:4, padding:'4px 6px', display:'flex', flexDirection:'column', transition:'background 160ms, box-shadow 220ms', overflow:'hidden' }}>
           <div style={{ fontSize:11, fontWeight:600, marginBottom:2, display:'flex', alignItems:'center', justifyContent:'space-between', letterSpacing:0.2, lineHeight:1 }}>
-            <span>{locId} {commandContext.mode==='transfer' ? 'TRANSFER' : 'COMMANDS'}</span>
-            <div style={{ display:'flex', gap:4 }}>
-              {commandContext.mode==='transfer' && <button onClick={()=>setCommandContext(ctx=> ctx ? { ...ctx, mode:'root'} : null)} style={{ background:'none', border:'none', color:'#8aa3b8', fontSize:10, cursor:'pointer', padding:'1px 4px', lineHeight:1 }}>Back</button>}
-              <button onClick={()=>setCommandContext(null)} style={{ background:'none', border:'none', color:'#8aa3b8', fontSize:10, cursor:'pointer', padding:'1px 4px', lineHeight:1 }}>Close</button>
-            </div>
+            <span>{locId} {isTransferMode ? (isTanker ? (commandContext.mode==='transfer' ? 'FUEL TRANSFER' : 'CHANGE LOCATION') : 'TRANSFER') : 'COMMANDS'}</span>
+            <button onClick={()=>{
+              if(isTransferMode) {
+                // Back from transfer to root (tanker or non-tanker)
+                setCommandContext(ctx=> ctx ? { ...ctx, mode:'root'} : null);
+              } else {
+                // Close panel entirely
+                setCommandContext(null);
+              }
+            }} style={{ background:'none', border:'1px solid #3b5466', color:'#8aa3b8', fontSize:10, cursor:'pointer', padding:'2px 8px', lineHeight:1, borderRadius:3 }}>Back</button>
           </div>
           {!item && <div style={{ fontSize:10, opacity:0.6 }}>Item not found.</div>}
-          {item && bp && commandContext.mode==='root' && (
-            <div style={{ fontSize:10, lineHeight:1.35, flex:1, display:'flex', flexDirection:'column', gap:6 }}>
-              <div style={{ fontSize:11, fontWeight:600, letterSpacing:0.4, textAlign:'center' }}>{bp.name}</div>
-              {/* Activate button cost | label | duration */}
-              <button disabled={!canActivate} onClick={()=>{ /* activation wiring later */ }} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background: canActivate? '#25323e' : '#1f2731', color: canActivate? '#d9e3ea' : '#7d8d99', fontWeight:600, letterSpacing:0.35, cursor:canActivate?'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <span style={{ minWidth:38, textAlign:'left' }} className="label-layer">{activationFuel.toFixed(1)}t</span>
-                <span style={{ flex:1, textAlign:'center' }} className="label-layer">Activate</span>
-                <span style={{ minWidth:28, textAlign:'right' }} className="label-layer">{activationDurationDays.toFixed(0)}d</span>
+          {item && bp && commandContext.mode==='root' && !isTanker && (
+            <div style={{ fontSize:10, lineHeight:1.35, flex:1, display:'flex', flexDirection:'column', gap:6, overflowY:'auto', minHeight:0, paddingRight:2 }}>
+              {/* Info panel: name, masses single line, large fuel bar */}
+              <div style={{ background:'#1b2630', border:'1px solid #31414f', borderRadius:4, padding:'4px 6px 5px', display:'flex', flexDirection:'column', gap:6 }}>
+                <div style={{ fontSize:11, fontWeight:600, letterSpacing:0.45, textAlign:'center', color:'#d8e3ea' }}>{bp.name}</div>
+                {(() => {
+                  const fuelNow = (item.fuelTons||0);
+                  const cap = (item.fuelCapacityTons||0);
+                  const wet = bp.massTons + fuelNow;
+                  return (
+                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                      <div style={{ display:'flex', justifyContent:'center', gap:14, fontSize:9.5, fontWeight:600, letterSpacing:0.45, color:'#b9c9d6' }}>
+                        <span>Dry {bp.massTons.toFixed(1)} t</span>
+                        <span>Total {wet.toFixed(1)} t</span>
+                      </div>
+                      <div style={{ position:'relative', height:18, border:'1px solid #4e3a27', background:'#0f161c', borderRadius:4, boxShadow:'0 0 0 1px #23170f inset' }}>
+                        {(() => { const ratio = cap>0? Math.max(0, Math.min(1, fuelNow/cap)) : 0; const r = Math.round(0x40 + (0xff-0x40)*ratio); const g = Math.round(0x29 + (0x9b-0x29)*ratio); const b = Math.round(0x15 + (0x2f-0x15)*ratio); const color = `rgb(${r},${g},${b})`; return <div style={{ position:'absolute', top:1, bottom:1, left:1, width:(ratio*100)+'%', background: color, borderRadius:3, transition:'width 300ms, background-color 300ms' }} />; })()}
+                        <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 6px', fontSize:9.5, fontWeight:600, letterSpacing:0.4, color:'#d5e2ec' }}>
+                          <span style={{ textShadow:'0 0 4px #000' }}>{fuelNow.toFixed(1)} t</span>
+                          <span style={{ opacity:0.85, textShadow:'0 0 4px #000' }}>{cap.toFixed(1)} t</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+              {/* Prep Launch / Abort Launch Prep button only for ground-built items (command panel) except dam modules */}
+              {(bp as any).type!=='tsunami-dam-module' && (item.state==='BUILT' || item.state==='PREPPED_LAUNCH') ? (()=> {
+                const launchAction = state.actions.find(a=> a.kind==='LAUNCH' && a.status==='PENDING' && a.payload.itemId===item.id);
+                const abortAction = state.actions.find(a=> a.kind==='ABORT_PREP' && a.status==='PENDING' && a.payload.itemId===item.id && a.payload.target==='LAUNCH');
+                const isPrepping = !!launchAction;
+                const isPrepped = item.state==='PREPPED_LAUNCH';
+                const isAborting = !!abortAction;
+                const globalLock = state.actions.some(a=> (a.kind==='LAUNCH'||a.kind==='LAND'||a.kind==='ACTIVATE_PREP'||a.kind==='ABORT_PREP') && a.status==='PENDING') || state.inventory.some(i=> i.state==='PREPPED_LAUNCH'||i.state==='PREPPED_LANDING'||i.state==='PREPPED_ACTIVATION');
+                const disabled = (isPrepping && !isPrepped) || isAborting || (!isPrepped && !isPrepping && globalLock);
+                const activeAct = (isPrepping && !isPrepped) ? launchAction : (isAborting ? abortAction : null);
+                const pct = activeAct ? Math.min(1, Math.max(0, (state.timeSec - activeAct.startTime)/(activeAct.endTime - activeAct.startTime))) : 0;
+                const label = isPrepped ? (isAborting? '...' : 'ABORT LAUNCH') : (isPrepping ? '...' : 'Prep Launch');
+                return (
+                  <button
+                    className='progress-btn'
+                    disabled={disabled}
+                    onClick={()=> {
+                      try {
+                        if (isPrepped) { if(!isAborting) { abortLaunchPrep(state, item.id, 'LAUNCH'); notify(); } }
+                        else if (!isPrepping && !globalLock) { launchItem(state, item.id); notify(); }
+                      } catch(e){ console.warn(e); }
+                    }}
+                    style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isPrepped? '#7a2d2d':'#345061'), background:isPrepped? '#411b1b':'#25323e', color:isPrepped? '#ff7878':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:disabled? 'default':'pointer', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', overflow:'hidden', opacity:disabled?0.6:1 }}>
+                    { (isPrepping && !isPrepped) || isAborting ? <div className='progress-fill' style={{ width:(pct*100)+'%', background:isPrepped? 'linear-gradient(90deg,#ff9898,#ff5a5a)' : 'linear-gradient(90deg,#4aa9ff,#1485ff)', opacity:0.8 }} /> : null }
+                    <span style={{ minWidth:28, textAlign:'left' }} className='label-layer'>{isPrepped? (isAborting? '' : '') : (isPrepping? '' : '7d')}</span>
+                    <span style={{ flex:1, textAlign:'center' }} className='label-layer'>{label}</span>
+                    <span style={{ minWidth:38, textAlign:'right', opacity: isPrepped? 0 : 1 }} className='label-layer'>{isPrepped? '' : (bp.launchCostFunds?.toFixed(2)+'B')}</span>
+                  </button>
+                );
+              })() : null}
+              {/* No launch controls or hint for dam module */}
+              {/* Activation / Prep Activation logic */}
+              {(() => {
+                const isImpactorType = bp.type==='small-impactor'||bp.type==='large-impactor'||bp.type==='giant-impactor';
+                if (isImpactorType) {
+                  // Mirror launch prep style: Prep Activation -> Abort Activation. Big red button performs final activation.
+                  const prepAct = state.actions.find(a=> a.kind==='ACTIVATE_PREP' && a.status==='PENDING' && a.payload.itemId===item.id);
+                  const abortAct = state.actions.find(a=> a.kind==='ABORT_PREP' && a.status==='PENDING' && a.payload.itemId===item.id && a.payload.target==='ACTIVATION');
+                  const isPrepping = !!prepAct;
+                  const isPrepped = item.state==='PREPPED_ACTIVATION';
+                  const isAborting = !!abortAct;
+                  const globalLock = state.actions.some(a=> (a.kind==='LAUNCH'||a.kind==='LAND'||a.kind==='ACTIVATE_PREP'||a.kind==='ABORT_PREP') && a.status==='PENDING') || state.inventory.some(i=> i.state==='PREPPED_LAUNCH'||i.state==='PREPPED_LANDING'||i.state==='PREPPED_ACTIVATION');
+                  const disabledA = (isPrepping && !isPrepped) || isAborting || (!isPrepping && !isPrepped && globalLock); // while timing/aborting or locked by other prep
+                  const activeAct = (isPrepping && !isPrepped) ? prepAct : (isAborting ? abortAct : null);
+                  const pctA = activeAct ? Math.min(1, Math.max(0,(state.timeSec - activeAct.startTime)/(activeAct.endTime - activeAct.startTime))) : 0;
+                  const labelA = isPrepped ? (isAborting? '...' : 'ABORT ACTIVATION') : (isPrepping ? '...' : 'Prep Activation');
+                  return (
+                    <button
+                      className='progress-btn'
+                      disabled={disabledA}
+                      onClick={()=> {
+                        try {
+                          if (isPrepped) { if(!isAborting){ abortPrep(state, item.id, 'ACTIVATION'); notify(); } }
+                          else if (!isPrepping && !globalLock) { prepareActivation(state, item.id); notify(); }
+                        } catch(e){ console.warn(e);} }
+                      }
+                      style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isPrepped? '#7a2d2d':'#345061'), background:isPrepped? '#411b1b':'#25323e', color:isPrepped? '#ff7878':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:disabledA? 'default':'pointer', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', overflow:'hidden', opacity:disabledA?0.6:1 }}>
+                      {(isPrepping && !isPrepped) || isAborting ? <div className='progress-fill' style={{ width:(pctA*100)+'%', background:isPrepped? 'linear-gradient(90deg,#ff9898,#ff5a5a)' : 'linear-gradient(90deg,#4aa9ff,#1485ff)', opacity:0.8 }} /> : null }
+                      <span style={{ minWidth:28, textAlign:'left' }} className='label-layer'>{isPrepped? (isAborting? '' : '') : (isPrepping? '' : '3d')}</span>
+                      <span style={{ flex:1, textAlign:'center' }} className='label-layer'>{labelA}</span>
+                      <span style={{ minWidth:38, textAlign:'right', opacity:0 }} className='label-layer'></span>
+                    </button>
+                  );
+                }
+                // Non-impactor activation remains direct
+                return (
+                  <button disabled={!canActivate} onClick={()=>{ if(canActivate){ /* direct activation after prep design TBD */ activateItem(state, item.id); notify(); setCommandContext(null);} }} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background: canActivate? '#25323e' : '#1f2731', color: canActivate? '#d9e3ea' : '#7d8d99', fontWeight:600, letterSpacing:0.35, cursor:canActivate?'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <span style={{ minWidth:28, textAlign:'left' }} className="label-layer">{activationDurationDays.toFixed(0)}d</span>
+                    <span style={{ flex:1, textAlign:'center' }} className="label-layer">Activate</span>
+                    <span style={{ minWidth:38, textAlign:'right' }} className="label-layer">{activationFuel.toFixed(1)}t</span>
+                  </button>
+                );
+              })()}
+              {/* Transfer / Change Location button (always enabled; gating only in submenu) */}
+              <button onClick={()=> setCommandContext(ctx=> ctx ? { ...ctx, mode:'transfer'} : null)} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background:'#283744', color:'#d4dde4', fontWeight:600, letterSpacing:0.35, cursor:'pointer', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                { (bp.type==='small-impactor'||bp.type==='large-impactor'||bp.type==='giant-impactor') ? (
+                  <>
+                    <span style={{ minWidth:28, textAlign:'left', opacity:0 }} className="label-layer">.</span>
+                    <span style={{ flex:1, textAlign:'center' }} className="label-layer">Change Location</span>
+                    <span style={{ minWidth:38, textAlign:'right', opacity:0 }} className="label-layer">.</span>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ minWidth:28, textAlign:'left', opacity:0 }} className="label-layer">.</span>
+                    <span style={{ flex:1, textAlign:'center' }} className="label-layer">Transfer</span>
+                    <span style={{ minWidth:38, textAlign:'right', opacity:0 }} className="label-layer">.</span>
+                  </>
+                ) }
               </button>
-              {/* Transfer button (opens transfer menu) cost | name | duration (generic cross-region preview) */}
-              <button disabled={!canTransfer} onClick={()=> setCommandContext(ctx=> ctx ? { ...ctx, mode:'transfer'} : null)} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background: canTransfer? '#283744' : '#1f2731', color: canTransfer? '#d4dde4' : '#7d8d99', fontWeight:600, letterSpacing:0.35, cursor:canTransfer?'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <span style={{ minWidth:38, textAlign:'left' }} className="label-layer">{transferFuelCost.toFixed(1)}t</span>
-                <span style={{ flex:1, textAlign:'center' }} className="label-layer">Transfer</span>
-                <span style={{ minWidth:28, textAlign:'right' }} className="label-layer">{transferDurationDays}d</span>
-              </button>
-              <div style={{ marginTop:'auto', fontSize:9, opacity:0.55, textAlign:'center' }}>Select Transfer to choose a Lagrange point</div>
             </div>
           )}
-          {item && bp && commandContext.mode==='transfer' && (
-            <div style={{ fontSize:10, lineHeight:1.35, flex:1, display:'flex', flexDirection:'column', gap:4 }}>
-              <div style={{ fontSize:11, fontWeight:600, letterSpacing:0.4, textAlign:'center', marginBottom:2 }}>Choose Destination Lagrange Point</div>
-              {lagrangePoints.map(lp => {
-                // For now assume same cost/duration as generic cross-region transfer
-                const cost = transferFuelCost; const dur = transferDurationDays;
+          {item && bp && commandContext.mode==='root' && isTanker && (
+            <div style={{ fontSize:10, lineHeight:1.35, flex:1, display:'flex', flexDirection:'column', gap:6, overflowY:'auto', minHeight:0, paddingRight:2 }}>
+              <div style={{ background:'#1b2630', border:'1px solid #31414f', borderRadius:4, padding:'4px 6px 5px', display:'flex', flexDirection:'column', gap:6 }}>
+                <div style={{ fontSize:11, fontWeight:600, letterSpacing:0.45, textAlign:'center', color:'#d8e3ea' }}>{bp.name}</div>
+                {(() => { const fuelNow = (item.fuelTons||0); const cap = (item.fuelCapacityTons||0); const wet = bp.massTons + fuelNow; return (
+                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                    <div style={{ display:'flex', justifyContent:'center', gap:14, fontSize:9.5, fontWeight:600, letterSpacing:0.45, color:'#b9c9d6' }}>
+                      <span>Dry {bp.massTons.toFixed(1)} t</span>
+                      <span>Total {wet.toFixed(1)} t</span>
+                    </div>
+                    <div style={{ position:'relative', height:18, border:'1px solid #4e3a27', background:'#0f161c', borderRadius:4, boxShadow:'0 0 0 1px #23170f inset' }}>
+                      {(() => { const ratio = cap>0? Math.max(0, Math.min(1, fuelNow/cap)) : 0; const r = Math.round(0x40 + (0xff-0x40)*ratio); const g = Math.round(0x29 + (0x9b-0x29)*ratio); const b = Math.round(0x15 + (0x2f-0x15)*ratio); const color = `rgb(${r},${g},${b})`; return <div style={{ position:'absolute', top:1, bottom:1, left:1, width:(ratio*100)+'%', background: color, borderRadius:3, transition:'width 300ms, background-color 300ms' }} />; })()}
+                      <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 6px', fontSize:9.5, fontWeight:600, letterSpacing:0.4, color:'#d5e2ec' }}>
+                        <span style={{ textShadow:'0 0 4px #000' }}>{fuelNow.toFixed(1)} t</span>
+                        <span style={{ opacity:0.85, textShadow:'0 0 4px #000' }}>{cap.toFixed(1)} t</span>
+                      </div>
+                    </div>
+                  </div>
+                ); })()}
+              </div>
+              <button disabled={otherCraftSameLoc.length===0 || (item.fuelTons||0)<=0} onClick={()=> setCommandContext(ctx=> ctx? { ...ctx, mode:'transfer'}:null)} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background: (otherCraftSameLoc.length===0 || (item.fuelTons||0)<=0)? '#1f2731':'#283744', color: (otherCraftSameLoc.length===0 || (item.fuelTons||0)<=0)? '#7d8d99':'#d4dde4', fontWeight:600, letterSpacing:0.35, cursor:(otherCraftSameLoc.length===0 || (item.fuelTons||0)<=0)?'default':'pointer', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'center' }}>Transfer Fuel</button>
+              <button onClick={()=> setCommandContext(ctx=> ctx? { ...ctx, mode:'relocate'}:null)} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background:'#283744', color:'#d4dde4', fontWeight:600, letterSpacing:0.35, cursor:'pointer', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'center' }}>Change Location</button>
+              {(() => {
+                const landingPrepInProgress = state.actions.some(a=>a.kind==='LAND' && a.status==='PENDING' && a.payload.itemId===item.id);
+                const abortLandingInProgress = state.actions.some(a=>a.kind==='ABORT_PREP' && a.status==='PENDING' && a.payload.itemId===item.id && a.payload.target==='LAND');
+                const label = item.state==='PREPPED_LANDING' ? (abortLandingInProgress ? '...' : 'ABORT LANDING') : (landingPrepInProgress ? '...' : 'Prep Landing');
+                const disabled = item.state==='PREPPED_LANDING'
+                  ? abortLandingInProgress
+                  : ( (anyPrepActive && !landingPrepInProgress) || (anyLaunchPrepped && !landingPrepInProgress) || !(item.state==='AT_LOCATION' || item.state==='ACTIVE_LOCATION') );
+                const isAbort = item.state==='PREPPED_LANDING';
+                const durationLeftDays = (()=>{
+                  const act = state.actions.find(a=> (a.kind==='LAND' || (a.kind==='ABORT_PREP' && a.payload.target==='LAND')) && a.status==='PENDING' && a.payload.itemId===item.id);
+                  if(!act) return 1; // default display
+                  const rem = Math.max(0, act.endTime - state.timeSec);
+                  return Math.max(1, Math.ceil(rem/86400));
+                })();
                 return (
-                  <button key={lp} disabled={!canTransfer} onClick={()=>{ /* schedule transfer later */ }} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background: canTransfer? '#283744' : '#1f2731', color: canTransfer? '#d4dde4' : '#7d8d99', fontWeight:600, letterSpacing:0.35, cursor:canTransfer?'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                    <span style={{ minWidth:38, textAlign:'left' }} className="label-layer">{cost.toFixed(1)}t</span>
-                    <span style={{ flex:1, textAlign:'center' }} className="label-layer">{lp}</span>
-                    <span style={{ minWidth:28, textAlign:'right' }} className="label-layer">{dur}d</span>
+                  <button
+                    disabled={disabled}
+                    onClick={()=>{
+                      if(isAbort) { if(!abortLandingInProgress) { try { abortPrep(state, item.id, 'LAND'); notify(); } catch(e){ console.warn(e);} } }
+                      else { if(!landingPrepInProgress && !disabled) { try { prepareLanding(state, item.id); notify(); } catch(e){ console.warn(e);} } }
+                    }}
+                    className="progress-btn"
+                    style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isAbort? '#693232':'#345061'), background: isAbort? '#3a1d1d':'#283744', color: isAbort? '#ff6d6d':'#d4dde4', fontWeight:600, letterSpacing:0.35, cursor:disabled? 'default':'pointer', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', opacity:disabled?0.6:1 }}>
+                    <span style={{ minWidth:28, textAlign:'left' }} className="label-layer">{durationLeftDays}d</span>
+                    <span style={{ flex:1, textAlign:'center' }} className="label-layer">{label}</span>
+                    <span style={{ minWidth:24, textAlign:'right', opacity:0.0 }} className="label-layer"> </span>
+                  </button>
+                );
+              })()}
+            </div>
+          )}
+          {item && bp && commandContext.mode==='transfer' && !isTanker && (
+            <div style={{ fontSize:10, lineHeight:1.3, flex:1, display:'flex', flexDirection:'column', gap:5 }}>
+              {(() => { const fuelNow = (item.fuelTons||0); const cap = (item.fuelCapacityTons||0); const ratio = cap>0? Math.max(0, Math.min(1, fuelNow/cap)) : 0; const r = Math.round(0x40 + (0xff-0x40)*ratio); const g = Math.round(0x29 + (0x9b-0x29)*ratio); const b = Math.round(0x15 + (0x2f-0x15)*ratio); const color = `rgb(${r},${g},${b})`; return (
+                <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                  <div style={{ fontSize:11, fontWeight:600, letterSpacing:0.45, textAlign:'center', color:'#d8e3ea' }}>{bp.name} Fuel</div>
+                  <div style={{ position:'relative', height:16, border:'1px solid #4e3a27', background:'#0f161c', borderRadius:4, boxShadow:'0 0 0 1px #23170f inset' }}>
+                    <div style={{ position:'absolute', top:1, bottom:1, left:1, width:(ratio*100)+'%', background:color, borderRadius:3, transition:'width 300ms, background-color 300ms' }} />
+                    <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 6px', fontSize:9, fontWeight:600, letterSpacing:0.4, color:'#d5e2ec' }}>
+                      <span style={{ textShadow:'0 0 4px #000' }}>{fuelNow.toFixed(1)} t</span>
+                      <span style={{ opacity:0.8, textShadow:'0 0 4px #000' }}>{cap.toFixed(1)} t</span>
+                    </div>
+                  </div>
+                </div>
+              ); })()}
+              <div style={{ fontSize:11, fontWeight:600, letterSpacing:0.4, textAlign:'center', marginBottom:2 }}>
+                {(bp.type==='small-impactor'||bp.type==='large-impactor'||bp.type==='giant-impactor') ? 'Select New Location' : 'Choose Destination Lagrange Point'}
+              </div>
+              <div style={{ overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:3, paddingRight:2 }}>
+              {(() => {
+                const isImpactor = (bp.type==='small-impactor'||bp.type==='large-impactor'||bp.type==='giant-impactor');
+                const origin = item.location || 'LEO';
+                const impactorAdj: Record<string,string[]> = {
+                  'LEO': ['SE_L1','SE_L2'],
+                  'SE_L1': ['LEO','SE_L2','SE_L4','SE_L5'], // added L1<->L2 direct adjacency
+                  'SE_L2': ['LEO','SE_L1','SE_L4','SE_L5'], // added L2<->L1 direct adjacency
+                  'SE_L4': ['SE_L1','SE_L2','SE_L3'],
+                  'SE_L5': ['SE_L1','SE_L2','SE_L3'],
+                  'SE_L3': ['SE_L4','SE_L5']
+                };
+                const list = isImpactor ? (impactorAdj[origin]||[]) : lagrangePoints;
+                return list.map(lp => {
+                  // Recompute cost/duration using mass and helper approximations (duplicated logic minimal for UI preview)
+                  let simulatedMass = item.massTons;
+                  // Mirror factors from actions.ts computeFuelCostForTransfer for impactors
+                  let factor = 0.6; let days = 60;
+                  if (isImpactor) {
+                    factor = 0.4; days = 60;
+                    if ((origin==='LEO' && (lp==='SE_L1'||lp==='SE_L2')) || ((lp==='LEO') && (origin==='SE_L1'||origin==='SE_L2'))) { factor=0.25; days=30; }
+                    else if ((origin==='SE_L1'||origin==='SE_L2') && (lp==='SE_L4'||lp==='SE_L5')) { factor=0.35; days=90; }
+                    else if ((origin==='SE_L4'||origin==='SE_L5') && (lp==='SE_L3')) { factor=0.3; days=120; }
+                    else if (origin==='SE_L3' && (lp==='SE_L4'||lp==='SE_L5')) { factor=0.3; days=120; }
+                  }
+                  const cost = simulatedMass * (origin===lp ? 0.05 : factor);
+                  const dur = origin===lp ? 7 : days;
+                  // Legacy gating used !canTransfer which only reflected an old simple LEO<->dest rule.
+                  // This incorrectly disabled valid adjacency routes (e.g., LEO -> SE_L1 with enough fuel).
+                  // New rule: only fuel availability gates the button (and implicit state via transferObject safety checks).
+                  const disabledBtn = (item.fuelTons||0) < cost;
+                  return (
+                    <button key={lp} disabled={disabledBtn} onClick={()=>{ if(!disabledBtn){ try { transferObject(state, item.id, lp as any); notify(); } catch(e){ console.warn(e);} setCommandContext(null);} }} className="progress-btn" style={{ padding:'3px 5px', borderRadius:4, border:'1px solid #345061', background: !disabledBtn? '#283744' : '#1f2731', color: !disabledBtn? '#d4dde4' : '#7d8d99', fontWeight:600, letterSpacing:0.35, cursor:!disabledBtn?'pointer':'default', fontSize:9, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                      <span style={{ minWidth:28, textAlign:'left' }} className="label-layer">{dur}d</span>
+                      <span style={{ flex:1, textAlign:'center' }} className="label-layer">{lp}</span>
+                      <span style={{ minWidth:38, textAlign:'right' }} className="label-layer">{cost.toFixed(1)}t</span>
+                    </button>
+                  );
+                });
+              })()}
+              </div>
+              <div style={{ fontSize:9, opacity:0.5, textAlign:'center', marginTop:4 }}>More destinations later</div>
+            </div>
+          )}
+          {item && bp && commandContext.mode==='transfer' && isTanker && (
+            <div style={{ fontSize:10, lineHeight:1.3, flex:1, display:'flex', flexDirection:'column', gap:6 }}>
+              {/* Tanker fuel bar */}
+              {(() => { const fuelNow = (item.fuelTons||0); const cap = (item.fuelCapacityTons||0); const ratio = cap>0? Math.max(0, Math.min(1, fuelNow/cap)) : 0; const r = Math.round(0x40 + (0xff-0x40)*ratio); const g = Math.round(0x29 + (0x9b-0x29)*ratio); const b = Math.round(0x15 + (0x2f-0x15)*ratio); const color = `rgb(${r},${g},${b})`; return (
+                <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                  <div style={{ fontSize:11, fontWeight:600, letterSpacing:0.45, textAlign:'center', color:'#d8e3ea' }}>{bp.name} Fuel</div>
+                  <div style={{ position:'relative', height:18, border:'1px solid #4e3a27', background:'#0f161c', borderRadius:4, boxShadow:'0 0 0 1px #23170f inset' }}>
+                    <div style={{ position:'absolute', top:1, bottom:1, left:1, width:(ratio*100)+'%', background:color, borderRadius:3, transition:'width 300ms, background-color 300ms' }} />
+                    <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 6px', fontSize:9.5, fontWeight:600, letterSpacing:0.4, color:'#d5e2ec' }}>
+                      <span style={{ textShadow:'0 0 4px #000' }}>{fuelNow.toFixed(1)} t</span>
+                      <span style={{ opacity:0.85, textShadow:'0 0 4px #000' }}>{cap.toFixed(1)} t</span>
+                    </div>
+                  </div>
+                </div>
+              ); })()}
+              <div style={{ fontSize:11, fontWeight:600, letterSpacing:0.4, textAlign:'center', marginBottom:2 }}>Select Craft to Receive Fuel</div>
+              <div style={{ overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:3, paddingRight:2 }}>
+              {otherCraftSameLoc.length===0 && <div style={{ fontSize:10, opacity:0.6, textAlign:'center' }}>No other craft present</div>}
+              {otherCraftSameLoc.map(c=>{
+                const cbp = BLUEPRINTS.find(b=>b.type===c.blueprint)!;
+                const targetMissing = Math.max(0, (c.fuelCapacityTons||0) - (c.fuelTons||0));
+                const available = item.fuelTons||0;
+                const transferAmount = Math.min(available, targetMissing);
+                const pending = state.actions.find(a=> a.kind==='FUEL_TRANSFER' && a.status==='PENDING' && a.payload.tankerId===item.id && a.payload.targetId===c.id);
+                const pct = pending ? Math.min(1,(state.timeSec - pending.startTime)/(pending.endTime - pending.startTime)) : 0;
+                return (
+                  <button key={c.id} disabled={transferAmount<=0 || !!pending} onClick={()=>{ try { const moved = transferFuelBetweenCraft(state, item.id, c.id); if(moved>0){ notify(); setCommandContext(null);} } catch(e){ console.warn(e);} }} className="progress-btn" style={{ padding:'3px 5px', borderRadius:4, border:'1px solid #345061', background: (transferAmount>0 && !pending)? '#283744':'#1f2731', color: (transferAmount>0 && !pending)? '#d4dde4':'#7d8d99', fontWeight:600, letterSpacing:0.35, cursor:(transferAmount>0 && !pending)?'pointer':'default', fontSize:9, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative' }}>
+                    {pending && <div className="progress-fill" style={{ width:(pct*100)+'%', background:'linear-gradient(90deg,#34b4ff,#1485ff)' }} />}
+                    <span style={{ minWidth:28, textAlign:'left', opacity:0.85 }} className="label-layer">7d</span>
+                    <span style={{ flex:1, textAlign:'center' }} className="label-layer">{cbp.name}</span>
+                    <span style={{ minWidth:38, textAlign:'right' }} className="label-layer">{pending ? '...' : transferAmount.toFixed(1)+'t'}</span>
                   </button>
                 );
               })}
-              <div style={{ marginTop:'auto', fontSize:9, opacity:0.55, textAlign:'center' }}>More destinations later</div>
+              </div>
+              {/* Removed hint text per request */}
+            </div>
+          )}
+          {item && bp && commandContext.mode==='relocate' && isTanker && (
+            <div style={{ fontSize:10, lineHeight:1.3, flex:1, display:'flex', flexDirection:'column', gap:4 }}>
+              <div style={{ fontSize:11, fontWeight:600, letterSpacing:0.4, textAlign:'center', marginBottom:2 }}>Select New Location</div>
+              {(() => {
+                const origin = item.location || 'LEO';
+                const adj: Record<string,string[]> = {
+                  'LEO': ['SE_L1','SE_L2'],
+                  'SE_L1': ['LEO','SE_L2','SE_L4','SE_L5'],
+                  'SE_L2': ['LEO','SE_L1','SE_L4','SE_L5'],
+                  'SE_L4': ['SE_L1','SE_L2','SE_L5','SE_L3'],
+                  'SE_L5': ['SE_L1','SE_L2','SE_L4','SE_L3'],
+                  'SE_L3': ['SE_L4','SE_L5']
+                };
+                const list = adj[origin]||[];
+                return <div style={{ overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:3, paddingRight:2 }}>{list.map(lp => {
+                  // Reuse preview logic with generic factors (lighter than impactors): 20-40% mass fractions
+                  let factor = 0.35; let days = 60;
+                  if ((origin==='LEO' && (lp==='SE_L1'||lp==='SE_L2')) || ((lp==='LEO') && (origin==='SE_L1'||origin==='SE_L2'))) { factor=0.20; days=30; }
+                  else if ((origin==='SE_L1'||origin==='SE_L2') && (lp==='SE_L4'||lp==='SE_L5')) { factor=0.30; days=75; }
+                  else if ((origin==='SE_L4'||origin==='SE_L5') && (lp==='SE_L3')) { factor=0.28; days=110; }
+                  else if (origin==='SE_L3' && (lp==='SE_L4'||lp==='SE_L5')) { factor=0.28; days=110; }
+                  const cost = item.massTons * factor;
+                  const dur = days;
+                  const disabledBtn = (item.fuelTons||0) < cost;
+                  return (
+                    <button key={lp} disabled={disabledBtn} onClick={()=>{ if(!disabledBtn){ try { transferObject(state, item.id, lp as any); notify(); setCommandContext(null); } catch(e){ console.warn(e);} } }} className="progress-btn" style={{ padding:'3px 5px', borderRadius:4, border:'1px solid #345061', background: !disabledBtn? '#283744':'#1f2731', color: !disabledBtn? '#d4dde4':'#7d8d99', fontWeight:600, letterSpacing:0.35, cursor:!disabledBtn?'pointer':'default', fontSize:9, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                      <span style={{ minWidth:28, textAlign:'left' }} className="label-layer">{dur}d</span>
+                      <span style={{ flex:1, textAlign:'center' }} className="label-layer">{lp}</span>
+                      <span style={{ minWidth:38, textAlign:'right' }} className="label-layer">{cost.toFixed(1)}t</span>
+                    </button>
+                  );
+                })}</div>;
+              })()}
+              <div style={{ marginTop:'auto', fontSize:9, opacity:0.55, textAlign:'center' }}>Route durations subject to tuning</div>
             </div>
           )}
         </div>
@@ -191,89 +597,26 @@ export const EconomyPanel: React.FC = () => {
         </div>
   {/* Fuel display temporarily removed */}
         <div style={{ overflowY:'auto', fontSize:10, lineHeight:1.15, flex:1 }}>
-          {(isGround ? groundItems : atLoc).map(it => {
-            const bp = BLUEPRINTS.find(b=>b.type===it.blueprint)!;
-            const tag = it.state === 'ACTIVE_LOCATION' ? ' (A)' : (it.state === 'IN_TRANSFER' ? ' (Xfer)' : '');
-            const activeColor = it.state === 'ACTIVE_LOCATION' ? '#2ea84d' : (it.state === 'IN_TRANSFER' ? '#cfa640' : '#d4dde4');
-            const launchAction = state.actions.find(a=>a.kind==='LAUNCH' && a.status==='PENDING' && a.payload.itemId===it.id);
-            const launchPct = launchAction ? Math.min(1,(state.timeSec - launchAction.startTime)/(launchAction.endTime - launchAction.startTime)) : 0;
-            const launchDurationDays = 7; // matches actions.ts launchDur comment (1 week)
-            const launchDisabled = !isGround || it.state!=='BUILT' || state.fundsBillion < bp.launchCostFunds || (anyLaunchActive && !launchAction) || (anyPrepped && !launchAction);
-            return (
-              <div key={it.id} style={{
-                marginBottom:3,
-                padding:'2px 3px 3px',
-                background:'#202b35',
-                border:'1px solid #2d3a46',
-                borderRadius:3,
-                display:'flex',
-                flexDirection:'row',
-                alignItems:'center',
-                gap:4,
-                position:'relative',
-                cursor: 'default'
-              }}>
-                <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column' }}>
-                  <div style={{ fontSize:10, fontWeight:600, letterSpacing:0.3, color:activeColor, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{bp.name}{tag}</div>
-                  {isGround && (it.state==='BUILT' || it.state==='PREPPED_LAUNCH') && it.blueprint !== 'tsunami-dam-module' && (
-                    <button
-                      disabled={launchDisabled && it.state!=='PREPPED_LAUNCH'}
-                      className="progress-btn"
-                      onClick={(e)=>{ 
-                        e.stopPropagation(); 
-                        if(it.state==='PREPPED_LAUNCH') {
-                          // Abort: revert to BUILT
-                          it.state = 'BUILT';
-                          notify();
-                        } else if(!launchDisabled) {
-                          try { launchItem(state, it.id); notify(); } catch(err){ console.warn(err);} 
-                        }
-                      }}
-                      style={{ marginTop:2, width:'100%', fontSize:9.5, display:'flex', alignItems:'center', justifyContent: it.state==='PREPPED_LAUNCH' ? 'center' : 'space-between', padding:'3px 4px', position:'relative', background: it.state==='PREPPED_LAUNCH' ? '#3a1d1d' : '#283744', border: it.state==='PREPPED_LAUNCH' ? '1px solid #693232' : '1px solid #345061', borderRadius:3, color: it.state==='PREPPED_LAUNCH' ? '#ff6d6d' : '#d4dde4', cursor:(launchDisabled && it.state!=='PREPPED_LAUNCH')?'default':'pointer', opacity:(launchDisabled && it.state!=='PREPPED_LAUNCH')?0.55:1, fontWeight:600, letterSpacing:0.35, transition:'background 140ms, border-color 140ms, color 140ms' }}>
-                      {launchAction && <div className="progress-fill" style={{ width:(launchPct*100)+'%', background:'linear-gradient(90deg,#34b4ff,#1485ff)' }} />}
-                      {it.state==='PREPPED_LAUNCH' ? (
-                        <span className="label-layer" style={{ position:'relative', zIndex:2, textTransform:'uppercase' }}>Abort Launch</span>
-                      ) : (
-                        <>
-                          <span style={{ minWidth:34, textAlign:'left' }} className="label-layer">{bp.launchCostFunds.toFixed(2)}B</span>
-                          <span style={{ flex:1, textAlign:'center', fontWeight:600, letterSpacing:0.25 }} className="label-layer">{launchAction ? '...' : 'Prep Launch'}</span>
-                          <span style={{ minWidth:28, textAlign:'right' }} className="label-layer">{launchAction ? (launchPct>=1?'✓': (launchDurationDays.toFixed(0)+'d')) : launchDurationDays+'d'}</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                  {!isGround && (
-                <button onClick={()=> setCommandContext({ location: locId as LocationId, itemId: it.id, mode:'root' })} style={{ marginTop:2, width:'100%', fontSize:9.5, padding:'4px 6px', background:'#25323d', border:'1px solid #344652', borderRadius:3, color:'#c7d2da', fontWeight:600, letterSpacing:0.4, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>Give Command</button>
-                  )}
-                </div>
-                {isGround && it.state==='BUILT' && anyLaunchActive && !launchAction && (
-                  <div style={{ position:'absolute', inset:0, background:'rgba(10,15,22,0.65)', display:'flex', alignItems:'center', justifyContent:'center', borderRadius:3, fontSize:8.5, fontWeight:600, letterSpacing:0.45, color:'#b9c6d4' }}>BUSY</div>
-                )}
-              </div>
-            );
-          })}
-          {(isGround ? groundItems : atLoc).length===0 && null}
+          {/* Construct button now above ground list */}
           {isGround && BLUEPRINTS.some(bp => isUnlocked(state.researchUnlocked as any, bp.type)) && (()=>{
             const activeBuildAction = state.actions.find(a=>a.kind==='BUILD' && a.status==='PENDING');
             let pct = 0;
-            if (activeBuildAction) {
-              pct = Math.min(1,(state.timeSec - activeBuildAction.startTime)/(activeBuildAction.endTime - activeBuildAction.startTime));
-            }
+            if (activeBuildAction) pct = Math.min(1,(state.timeSec - activeBuildAction.startTime)/(activeBuildAction.endTime - activeBuildAction.startTime));
             return (
               <button
                 className="progress-btn"
                 style={{
-                  marginTop:4,
+                  margin:'0 0 6px 0',
                   width:'100%',
-                  background:'#23303c',
-                  border: activeBuildAction ? '1px solid #3d5668' : '1px dashed #3a4a56',
-                  color:'#b8c7d4',
-                  borderRadius:4,
-                  padding:'4px 6px',
-                  fontSize:11,
+                  background:'#202b35',
+                  border: activeBuildAction ? '1px solid #3d5668' : '1px solid #2d3a46',
+                  color:'#d4dde4',
+                  borderRadius:3,
+                  padding:'2px 3px 3px',
+                  fontSize:10,
                   fontWeight:600,
                   cursor:'pointer',
-                  letterSpacing:0.5,
+                  letterSpacing:0.3,
                   display:'flex',
                   alignItems:'center',
                   justifyContent:'center',
@@ -287,6 +630,28 @@ export const EconomyPanel: React.FC = () => {
               </button>
             );
           })()}
+          {(() => {
+            if (isGround) return groundItems.map(it => <InventoryRow key={it.id} it={it} isGround={true} locId={locId as LocationId} setCommandContext={setCommandContext} />);
+            if (locId !== 'DEPLOYED') return atLoc.map(it => <InventoryRow key={it.id} it={it} isGround={false} locId={locId as LocationId} setCommandContext={setCommandContext} />);
+            // Grouping for DEPLOYED
+            const order: (string)[] = ['En Route','SE_L1','SE_L2','SE_L4','SE_L5','SE_L3'];
+            const groups: Record<string, any[]> = { };
+            groups['En Route'] = atLoc.filter(i=> i.state==='IN_TRANSFER');
+            for (const loc of ['SE_L1','SE_L2','SE_L4','SE_L5','SE_L3']) {
+              groups[loc] = atLoc.filter(i=> i.location===loc && i.state!=='IN_TRANSFER');
+            }
+            const elements: any[] = [];
+            for (const g of order) {
+              const items = groups[g];
+              if (!items || items.length===0) continue;
+              elements.push(<div key={g+':hdr'} style={{ margin:'4px 0 2px', fontSize:9, fontWeight:700, letterSpacing:0.6, opacity:0.82, padding:'0 2px', color:'#9fb2c1' }}>{g}</div>);
+              for (const it of items) {
+                elements.push(<InventoryRow key={it.id} it={it} isGround={false} locId={locId as LocationId} setCommandContext={setCommandContext} />);
+              }
+            }
+            return elements;
+          })()}
+          {(isGround ? groundItems : atLoc).length===0 && null}
         </div>
       </div>
     );
@@ -337,9 +702,9 @@ export const EconomyPanel: React.FC = () => {
                           className="progress-btn"
                           style={{ marginTop:8, width:'100%', fontSize:11, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'5px 6px', position:'relative', opacity:buttonDisabled?0.5:1 }}>
                           {inProg && <div className="progress-fill" style={{ width:(pct*100)+'%', background:'linear-gradient(90deg,#34b4ff,#1485ff)' }} />}
-                          <span style={{ minWidth:42, textAlign:'left' }} className="label-layer">{r.costFunds.toFixed(2)}B</span>
+                          <span style={{ minWidth:34, textAlign:'left', color: completed? '#47d46a' : undefined }} className="label-layer">{completed ? '✓' : (r.durationSec/86400).toFixed(1)+'d'}</span>
                           <span style={{ flex:1, textAlign:'center', fontWeight:600, letterSpacing:0.3, color: completed? '#47d46a' : undefined }} className="label-layer">{completed ? 'Done' : (inProg ? '...' : 'Research')}</span>
-                          <span style={{ minWidth:34, textAlign:'right', color: completed? '#47d46a' : undefined }} className="label-layer">{completed ? '✓' : (r.durationSec/86400).toFixed(1)+'d'}</span>
+                          <span style={{ minWidth:42, textAlign:'right' }} className="label-layer">{r.costFunds.toFixed(2)}B</span>
                         </button>
                         {showOverlay && (
                           <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:'rgba(10,15,22,0.78)', borderRadius:10, fontSize:10, lineHeight:1.3, textAlign:'center', padding:'6px 8px', color:'#b9c6d4' }}>
@@ -361,7 +726,7 @@ export const EconomyPanel: React.FC = () => {
         )}
       </div>
       {/* Bottom Half: Location Panels (divider removed) */}
-      <div style={{ flex:'1 1 50%', minHeight:0, paddingTop:4, display:'flex', flexDirection:'row', gap:6, overflowX:'hidden' }}>
+  <div style={{ flex:'1 1 50%', minHeight:0, paddingTop:4, display:'flex', flexDirection:'row', gap:6, overflowX:'hidden' }}>
         {locOrder.map(l => renderPanel(l))}
         {renderPanel('GROUND')}
       </div>

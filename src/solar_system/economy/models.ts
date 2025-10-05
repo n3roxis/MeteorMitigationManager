@@ -1,8 +1,8 @@
 // Economy models and types
-export type ResearchId = 'small-kinetic' | 'large-kinetic' | 'space-laser' | 'tsunami-dams' | 'giant-kinetic';
-export type BuildableType = 'small-impactor' | 'large-impactor' | 'giant-impactor' | 'laser-platform' | 'fuel-tank' | 'tsunami-dam-module';
+export type ResearchId = 'small-kinetic' | 'large-kinetic' | 'space-laser' | 'tsunami-dams' | 'giant-kinetic' | 'orbital-tanker-tech';
+export type BuildableType = 'small-impactor' | 'large-impactor' | 'giant-impactor' | 'laser-platform' | 'fuel-tank' | 'tsunami-dam-module' | 'orbital-tanker';
 // Simplified location model: only Low Earth Orbit and an aggregated 'DEPLOYED' region for anything beyond
-export type LocationId = 'LEO' | 'DEPLOYED';
+export type LocationId = 'LEO' | 'DEPLOYED' | 'SE_L1' | 'SE_L2' | 'SE_L3' | 'SE_L4' | 'SE_L5';
 
 export interface ResearchDef {
   id: ResearchId;
@@ -29,6 +29,8 @@ export type InventoryState =
   | 'BUILDING'
   | 'BUILT'
   | 'PREPPED_LAUNCH'
+  | 'PREPPED_LANDING'
+  | 'PREPPED_ACTIVATION'
   | 'AT_LOCATION'
   | 'ACTIVE_LOCATION'
   | 'IN_TRANSFER';
@@ -39,13 +41,20 @@ export interface InventoryItem {
   state: InventoryState;
   massTons: number;
   location?: LocationId;
-  transfer?: { origin: LocationId; destination: LocationId; arrivalTime: number; fuelCost: number };
+  transfer?: { origin: LocationId; destination: LocationId; departureTime: number; arrivalTime: number; fuelCost: number; realDepartureMs: number; realArrivalMs: number };
+  // Optional onboard fuel tracking for space-capable assets
+  fuelTons?: number; // current onboard fuel
+  fuelCapacityTons?: number; // maximum onboard fuel (initialized from activationFuelTons if defined)
+  prevStateForLanding?: InventoryState; // remember original state (AT_LOCATION or ACTIVE_LOCATION) before landing prep
 }
 
 export type ActionKind =
   | 'RESEARCH'
   | 'BUILD'
   | 'LAUNCH'
+  | 'ACTIVATE_PREP'
+  | 'LAND'
+  | 'ABORT_PREP'
   | 'FUEL_TRANSFER'
   | 'ACTIVATE'
   | 'DEACTIVATE'
@@ -65,8 +74,6 @@ export interface ScheduledAction {
 export interface GameEconomyState {
   timeSec: number;
   fundsBillion: number;
-  fuel: Record<LocationId, number>; // free fuel at each location (LEO + DEPLOYED)
-  fuelReserved: Record<LocationId, number>; // reserved fuel at each location
   researchUnlocked: Set<ResearchId>;
   researchInProgress: Set<ResearchId>;
   inventory: InventoryItem[];

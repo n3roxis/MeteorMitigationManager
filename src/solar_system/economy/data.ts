@@ -45,6 +45,15 @@ export const RESEARCH_DEFS: ResearchDef[] = [
     unlocks: ['giant-impactor'],
     prereq: ['large-kinetic']
   }
+  ,{
+    id: 'orbital-tanker-tech',
+    name: 'Orbital Tanker Systems',
+    costFunds: 10,
+    // ~75 days development for specialized tanker systems
+    durationSec: 75 * 24 * 3600,
+    unlocks: ['orbital-tanker'],
+    //prereq: ['space-laser']
+  }
 ];
 
 export const BLUEPRINTS: BuildableBlueprint[] = [
@@ -104,6 +113,18 @@ export const BLUEPRINTS: BuildableBlueprint[] = [
     launchCostFunds: 3,
     // Civil module: no activation fuel
     activationDurationSec: 14 * 24 * 3600
+  }
+  ,{
+    type: 'orbital-tanker',
+    name: 'Orbital Tanker Rocket',
+    buildCostFunds: 8,
+    // Fabrication time ~50 days
+    buildDurationSec: 50 * 24 * 3600,
+    massTons: 25,
+    launchCostFunds: 2.2,
+    // Tanker carries large internal fuel for redistribution; activation reserves fuel for prepping transfer manifolds
+    activationFuelTons: 12,
+    activationDurationSec: 21 * 24 * 3600
   }
 ];
 

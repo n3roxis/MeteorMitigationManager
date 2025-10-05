@@ -95,13 +95,19 @@ export class InterceptPath implements UpdatableEntity {
 
     for (let i = 0; i < transportSecondsTries.length; i++) {
       try {
+        console.log(`DebugLog: Trying ${transportSecondsTries[i]} seconds`)
         const evaluation: LambertPathEvaluationType = this.calculateTrajectory(transportSecondsTries[i]);
+        console.log("Success")
         evaluation.fuelConsumptionMass = this.calculateFuelMass(impactorMass, evaluation.departureDeltaVelocity.length());
         evaluation.meteorVelocityChange = evaluation.arrivalDeltaVelocity.scale(impactorMass / this.targetEntity.mass);
         evaluations.push(evaluation);
+
       } catch (e) {
+        console.log("Failure")
       }
     }
+
+    console.log(`DebugLog: Found ${evaluations.length} possible paths in ${transportSecondsTries.length} tries`)
 
     if (evaluations.length === 0) return null;
 

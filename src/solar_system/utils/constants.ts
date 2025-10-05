@@ -10,3 +10,7 @@ export const DEBUG_G = 6.67430 * 10 ** -11 // Gravitational constants
 export const MEarthxGperAU3 = DEBUG_ME * DEBUG_G / DEBUG_AU / DEBUG_AU / DEBUG_AU; // Gravitational constant times earth mass * astronomical unit (multiplied to reduce floating point errors)
 
 export const MSunxGperAU3 = DEBUG_MS * DEBUG_G / DEBUG_AU / DEBUG_AU / DEBUG_AU;
+
+
+export const SecondsPerDay = 86400
+export const SecondsPerMonth = SecondsPerDay * 365.25 / 12

@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test_orbits": "node --experimental-specifier-resolution=node ./orbit_tester/starter.ts",
     "test_lambert_solver": "node ./src/solar_system/utils/lambert_solver_tester.spec.ts",
     "test_all": "node --test \"src/**/*.spec.ts\""
   },

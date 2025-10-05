@@ -63,6 +63,15 @@ export const RESEARCH_DEFS: ResearchDef[] = [
     unlocks: ['orbital-habitat']
     // No prerequisites per request
   }
+  ,{
+    id: 'space-telescope-tech',
+    name: 'Space Telescope Program',
+    costFunds: 8,
+    // Moderate complexity optics + integration ~70 days
+    durationSec: 70 * 24 * 3600,
+    unlocks: ['space-telescope']
+    // No prerequisites (user request)
+  }
 ];
 
 export const BLUEPRINTS: BuildableBlueprint[] = [
@@ -144,6 +153,16 @@ export const BLUEPRINTS: BuildableBlueprint[] = [
     massTons: 35,
     launchCostFunds: 3.2,
     // No activation; passive once in LEO
+    activationDurationSec: 0
+  }
+  ,{
+    type: 'space-telescope',
+    name: 'Space Telescope',
+    buildCostFunds: 7,
+    buildDurationSec: 55 * 24 * 3600,
+    massTons: 3, // reduced from 12 to 3 to enable reaching L2
+    launchCostFunds: 2.0,
+    // Instant, costless on/off toggle at L2
     activationDurationSec: 0
   }
 ];

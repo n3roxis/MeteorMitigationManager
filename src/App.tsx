@@ -88,10 +88,11 @@ const App = () => {
         <div style={{ position:'relative', flex:'1 1 auto', borderRight:'1px solid #1d2530', background:'rgba(10,10,16,0.9)', overflow:'hidden' }}>
           <EconomyPanel />
         </div>
-        {/* Middle fixed 200px panel with debug + big button */}
+        {/* Middle fixed 200px panel with debug stacked above big button, both bottom-aligned */}
         <div style={{ width:200, minWidth:200, maxWidth:200, flex:'0 0 200px', borderRight:'1px solid #1d2530', background:'#141b22', position:'relative', display:'flex', flexDirection:'column', fontSize:11, lineHeight:1.25 }}>
-          <div style={{ flex:'0 0 auto', padding:'6px 6px 4px', borderBottom:'1px solid #1d2530', fontWeight:600, letterSpacing:0.5, color:'#88b0c8' }}>Activation Solver</div>
-          <div style={{ flex:'0 0 auto', padding:'4px 6px 6px', borderBottom:'1px solid #1d2530', minHeight:90 }}>
+          <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'stretch', justifyContent:'flex-end', padding:'0 0 12px' }}>
+            <div style={{ flex:'0 0 auto', padding:'6px 6px 4px', borderBottom:'1px solid #1d2530', fontWeight:600, letterSpacing:0.5, color:'#88b0c8' }}>Activation Solver</div>
+            <div style={{ flex:'0 0 auto', padding:'4px 6px 6px', borderBottom:'1px solid #1d2530', minHeight:90 }}>
             {(() => {
               const preppedActivation = economyState.inventory.find(i=>i.state==='PREPPED_ACTIVATION');
               if (!preppedActivation) return <div style={{ opacity:0.5 }}>No impactor in activation prep.</div>;
@@ -135,9 +136,9 @@ const App = () => {
                 </div>
               );
             })()}
-          </div>
-          {/* Projectile debug list */}
-          <div style={{ flex:'0 0 auto', padding:'4px 6px 6px', borderBottom:'1px solid #1d2530', maxHeight:130, overflowY:'auto' }}>
+            </div>
+            {/* Projectile debug list */}
+            <div style={{ flex:'0 0 auto', padding:'4px 6px 6px', borderBottom:'1px solid #1d2530', maxHeight:130, overflowY:'auto' }}>
             {(() => {
               // Collect interceptor projectiles
               const projs: any[] = ENTITIES.filter(e=> (e as any).constructor && (e as any).constructor.name === 'InterceptorProjectile') as any[];
@@ -160,8 +161,9 @@ const App = () => {
               });
               return <div>{rows}</div>;
             })()}
-          </div>
-          <div style={{ flex:'1 1 auto', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            </div>
+            {/* Big red activation / launch button bottom-aligned */}
+            <div style={{ flex:'0 0 auto', display:'flex', alignItems:'flex-end', justifyContent:'center', paddingTop:10 }}>
             {(() => {
               const preppedLaunch = economyState.inventory.find(i=>i.state==='PREPPED_LAUNCH');
               const preppedLanding = economyState.inventory.find(i=>i.state==='PREPPED_LANDING');
@@ -226,6 +228,7 @@ const App = () => {
                 )}
               </button>
               ); })()}
+            </div>
           </div>
         </div>
         {/* Bottom Right: Future panel placeholder */}

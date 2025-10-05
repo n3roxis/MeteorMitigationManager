@@ -2,6 +2,7 @@ import React from 'react';
 import { economyState } from '../../../solar_system/economy/state';
 import { RESEARCH_DEFS, BLUEPRINTS, isUnlocked } from '../../../solar_system/economy/data';
 import { startResearch, startBuild, transferFuelBetweenCraft, prepareLanding, abortPrep, transferObject, launchItem, abortPrep as abortLaunchPrep, prepareActivation, activateItem } from '../../../solar_system/economy/actions';
+import * as econActs from '../../../solar_system/economy/actions';
 import { LaserWeapon } from '../../../solar_system/entities/LaserWeapon';
 import { ENTITIES, registerEntity as registerSimEntity } from '../../../solar_system/state/entities';
 import { GameEconomyState, LocationId } from '../../../solar_system/economy/models';
@@ -117,6 +118,17 @@ function InventoryRow(props:{ it:any; isGround:boolean; locId:LocationId; setCom
           );
         })()}
         {/* Dam modules have no launch button; no badge shown per request */}
+        {/* Inline Turn Off for active space telescope (instant toggle) */}
+        {bp.type==='space-telescope' && it.state==='ACTIVE_LOCATION' && (
+          <div style={{ marginTop:4, display:'flex' }}>
+            <button
+              onClick={(e)=> { e.stopPropagation(); try { econActs.deactivateItem(economyState, it.id); notify(); } catch(err){ console.warn(err);} }}
+              className='progress-btn'
+              style={{ flex:1, padding:'3px 4px', borderRadius:3, border:'1px solid #2d4b5c', background:'#20323d', color:'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:'pointer', fontSize:9, display:'flex', alignItems:'center', justifyContent:'center' }}>
+              Turn Off
+            </button>
+          </div>
+        )}
         {/* Inline OFF toggle for active laser platform */}
         {!isGround && bp.type==='laser-platform' && it.state==='ACTIVE_LOCATION' && (()=> {
           const meteor = ENTITIES.find(e => (e as any).id && (e as any).id.startsWith('meteor')) as any;
@@ -376,62 +388,95 @@ export const EconomyPanel: React.FC = () => {
                 );
               })() : null}
               {/* No launch controls or hint for dam module */}
-              {/* Activation / Prep Activation logic */}
-              {(bp.type==='orbital-habitat') ? null : (bp.type==='laser-platform' ? (()=>{
-                // Laser platform: On/Off toggle allowed only at L1, L3, L4, L5. Beam source follows current lagrange location.
-                const isActive = item.state === 'ACTIVE_LOCATION';
-                const meteor = ENTITIES.find(e => (e as any).id && (e as any).id.startsWith('meteor')) as any;
-                const allowedLocs: Record<string,string> = { 'SE_L1':'sun-earth-L1','SE_L3':'sun-earth-L3','SE_L4':'sun-earth-L4','SE_L5':'sun-earth-L5' };
-                const loc = item.location as string | undefined;
-                const sourceId = loc ? allowedLocs[loc] : undefined;
-                const beamId = 'laser-beam-' + item.id;
-                let beam = ENTITIES.find(e => (e as any).id === beamId) as any as LaserWeapon | undefined;
-                const locationOk = !!sourceId;
-                const canToggle = !!meteor && locationOk; // must have target meteor and be at valid lagrange point
-                const onClick = () => {
-                  if (!canToggle) return;
-                  // Recreate beam if missing or source changed
-                  if ((!beam || (beam as any).sourceId !== sourceId) && meteor && sourceId) {
-                    // If existing, we can't change private sourceId; destroy and replace
-                    if (beam && (beam as any).destroy) (beam as any).destroy();
-                    beam = new LaserWeapon(beamId, sourceId, meteor.id);
-                    registerSimEntity(beam);
-                  }
-                  if (beam) {
-                    beam.setActive(!beam.isActive());
-                  }
-                  item.state = beam && beam.isActive() ? 'ACTIVE_LOCATION' : 'AT_LOCATION';
-                  notify();
-                };
-                return (
-                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                    <button
-                      disabled={!canToggle}
-                      onClick={onClick}
-                      className='progress-btn'
-                      style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isActive? '#2e6f2e':'#345061'), background:isActive? '#214021':'#25323e', color:isActive? '#6dff6d':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:canToggle? 'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', opacity:canToggle?1:0.5 }}>
-                      <span style={{ minWidth:28, textAlign:'left' }} className='label-layer'>{isActive? 'ON':'OFF'}</span>
-                      <span style={{ flex:1, textAlign:'center' }} className='label-layer'>Laser</span>
-                      <span style={{ minWidth:38, textAlign:'right', opacity:0.6 }} className='label-layer'>{!canToggle? ' ' : ' '}</span>
-                    </button>
-                    {(!locationOk || (locationOk && !meteor)) && (
-                      <div style={{ fontSize:8.5, lineHeight:1.2, textAlign:'center', color:'#b9c6d4', opacity:0.75, padding:'0 2px' }}>
-                        {!locationOk ? 'Move to L1, L3, L4 or L5 to enable' : 'Waiting for meteor target'}
-                      </div>
-                    )}
-                  </div>
-                );
-              })() : (() => {
+              {/* Activation / Prep Activation logic (refactored for clarity) */}
+              {(() => {
+                if (bp.type==='orbital-habitat') return null;
+
+                if (bp.type==='laser-platform') {
+                  // Laser platform: On/Off toggle allowed only at L1, L3, L4, L5
+                  const isActive = item.state === 'ACTIVE_LOCATION';
+                  const meteor = ENTITIES.find(e => (e as any).id && (e as any).id.startsWith('meteor')) as any;
+                  const allowedLocs: Record<string,string> = { 'SE_L1':'sun-earth-L1','SE_L3':'sun-earth-L3','SE_L4':'sun-earth-L4','SE_L5':'sun-earth-L5' };
+                  const loc = item.location as string | undefined;
+                  const sourceId = loc ? allowedLocs[loc] : undefined;
+                  const beamId = 'laser-beam-' + item.id;
+                  let beam = ENTITIES.find(e => (e as any).id === beamId) as any as LaserWeapon | undefined;
+                  const locationOk = !!sourceId;
+                  const canToggle = !!meteor && locationOk;
+                  const onClick = () => {
+                    if (!canToggle) return;
+                    if ((!beam || (beam as any).sourceId !== sourceId) && meteor && sourceId) {
+                      if (beam && (beam as any).destroy) (beam as any).destroy();
+                      beam = new LaserWeapon(beamId, sourceId, meteor.id);
+                      registerSimEntity(beam);
+                    }
+                    if (beam) beam.setActive(!beam.isActive());
+                    item.state = beam && beam.isActive() ? 'ACTIVE_LOCATION' : 'AT_LOCATION';
+                    notify();
+                  };
+                  return (
+                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                      <button
+                        disabled={!canToggle}
+                        onClick={onClick}
+                        className='progress-btn'
+                        style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isActive? '#2e6f2e':'#345061'), background:isActive? '#214021':'#25323e', color:isActive? '#6dff6d':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:canToggle? 'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', opacity:canToggle?1:0.5 }}>
+                        <span style={{ minWidth:28, textAlign:'left' }} className='label-layer'>{isActive? 'ON':'OFF'}</span>
+                        <span style={{ flex:1, textAlign:'center' }} className='label-layer'>Laser</span>
+                        <span style={{ minWidth:38, textAlign:'right', opacity:0.6 }} className='label-layer'>{' '}</span>
+                      </button>
+                      {(!locationOk || (locationOk && !meteor)) && (
+                        <div style={{ fontSize:8.5, lineHeight:1.2, textAlign:'center', color:'#b9c6d4', opacity:0.75, padding:'0 2px' }}>
+                          {!locationOk ? 'Move to L1, L3, L4 or L5 to enable' : 'Waiting for meteor target'}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                if (bp.type==='space-telescope') {
+                  // Space telescope: On/Off only at L2
+                  const isActive = item.state === 'ACTIVE_LOCATION';
+                  const atL2 = item.location === 'SE_L2';
+                  const canToggle = atL2;
+                  const onClick = () => {
+                    if (!canToggle) return;
+                    try {
+                      if (isActive) { econActs.deactivateItem(state, item.id); }
+                      else { econActs.activateItem(state, item.id); }
+                      notify();
+                    } catch(e){ console.warn(e); }
+                  };
+                  return (
+                    <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                      <button
+                        disabled={!canToggle}
+                        onClick={onClick}
+                        className='progress-btn'
+                        style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isActive? '#2e6f2e':'#345061'), background:isActive? '#214021':'#25323e', color:isActive? '#6dff6d':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:canToggle? 'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', opacity:canToggle?1:0.5 }}>
+                        <span style={{ minWidth:28, textAlign:'left' }} className='label-layer'>{isActive? 'ON':'OFF'}</span>
+                        <span style={{ flex:1, textAlign:'center' }} className='label-layer'>Telescope</span>
+                        <span style={{ minWidth:38, textAlign:'right', opacity:0.6 }} className='label-layer'>{' '}</span>
+                      </button>
+                      {!atL2 && (
+                        <div style={{ fontSize:8.5, lineHeight:1.2, textAlign:'center', color:'#b9c6d4', opacity:0.75, padding:'0 2px' }}>
+                          Move to L2 to enable
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Impactor activation prep vs direct activation
                 const isImpactorType = bp.type==='small-impactor'||bp.type==='large-impactor'||bp.type==='giant-impactor';
                 if (isImpactorType) {
-                  // Mirror launch prep style: Prep Activation -> Abort Activation. Big red button performs final activation.
                   const prepAct = state.actions.find(a=> a.kind==='ACTIVATE_PREP' && a.status==='PENDING' && a.payload.itemId===item.id);
                   const abortAct = state.actions.find(a=> a.kind==='ABORT_PREP' && a.status==='PENDING' && a.payload.itemId===item.id && a.payload.target==='ACTIVATION');
                   const isPrepping = !!prepAct;
                   const isPrepped = item.state==='PREPPED_ACTIVATION';
                   const isAborting = !!abortAct;
                   const globalLock = state.actions.some(a=> (a.kind==='LAUNCH'||a.kind==='LAND'||a.kind==='ACTIVATE_PREP'||a.kind==='ABORT_PREP') && a.status==='PENDING') || state.inventory.some(i=> i.state==='PREPPED_LAUNCH'||i.state==='PREPPED_LANDING'||i.state==='PREPPED_ACTIVATION');
-                  const disabledA = (isPrepping && !isPrepped) || isAborting || (!isPrepping && !isPrepped && globalLock); // while timing/aborting or locked by other prep
+                  const disabledA = (isPrepping && !isPrepped) || isAborting || (!isPrepping && !isPrepped && globalLock);
                   const activeAct = (isPrepping && !isPrepped) ? prepAct : (isAborting ? abortAct : null);
                   const pctA = activeAct ? Math.min(1, Math.max(0,(state.timeSec - activeAct.startTime)/(activeAct.endTime - activeAct.startTime))) : 0;
                   const labelA = isPrepped ? (isAborting? '...' : 'ABORT ACTIVATION') : (isPrepping ? '...' : 'Prep Activation');
@@ -453,15 +498,16 @@ export const EconomyPanel: React.FC = () => {
                     </button>
                   );
                 }
-                // Non-impactor activation remains direct
+
+                // Default direct activation
                 return (
-                  <button disabled={!canActivate} onClick={()=>{ if(canActivate){ /* direct activation after prep design TBD */ activateItem(state, item.id); notify(); setCommandContext(null);} }} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background: canActivate? '#25323e' : '#1f2731', color: canActivate? '#d9e3ea' : '#7d8d99', fontWeight:600, letterSpacing:0.35, cursor:canActivate?'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <button disabled={!canActivate} onClick={()=>{ if(canActivate){ activateItem(state, item.id); notify(); setCommandContext(null);} }} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background: canActivate? '#25323e' : '#1f2731', color: canActivate? '#d9e3ea' : '#7d8d99', fontWeight:600, letterSpacing:0.35, cursor:canActivate?'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <span style={{ minWidth:28, textAlign:'left' }} className="label-layer">{activationDurationDays.toFixed(0)}d</span>
                     <span style={{ flex:1, textAlign:'center' }} className="label-layer">Activate</span>
                     <span style={{ minWidth:38, textAlign:'right' }} className="label-layer">{activationFuel.toFixed(1)}t</span>
                   </button>
                 );
-              })() )}
+              })()}
               {/* Transfer / Change Location button (always enabled; gating only in submenu) */}
               {bp.type==='orbital-habitat' ? null : (
               <button onClick={()=> setCommandContext(ctx=> ctx ? { ...ctx, mode:'transfer'} : null)} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background:'#283744', color:'#d4dde4', fontWeight:600, letterSpacing:0.35, cursor:'pointer', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between' }}>

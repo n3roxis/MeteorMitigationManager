@@ -9,7 +9,7 @@ export class RadarScreen implements UpdatableEntity{
     display = new Container();
     off = Vector.zero
     radius = 150
-    colors = {rim:'#116511ff',bg:'#074f00',grating:'rgba(158, 239, 161, 1)'}
+    colors = {rim:'#116511ff',bg:'#074f00',grating:'rgba(158, 239, 161, 0.33)'}
     private gfx: Graphics | null = null
     private fxs: Graphics | null = null
     private blur = new BlurFilter();

@@ -2,6 +2,7 @@ import React from 'react';
 import { economyState } from '../../../solar_system/economy/state';
 import { RESEARCH_DEFS, BLUEPRINTS, isUnlocked } from '../../../solar_system/economy/data';
 import { startResearch, startBuild, transferFuelBetweenCraft, prepareLanding, abortPrep, transferObject, launchItem, abortPrep as abortLaunchPrep, prepareActivation, activateItem } from '../../../solar_system/economy/actions';
+import { addMitigationEvent } from '../../../solar_system/impact/mitigationHistory';
 import * as econActs from '../../../solar_system/economy/actions';
 import { LaserWeapon } from '../../../solar_system/entities/LaserWeapon';
 import { ENTITIES, registerEntity as registerSimEntity } from '../../../solar_system/state/entities';
@@ -35,21 +36,37 @@ function InventoryRow(props:{ it:any; isGround:boolean; locId:LocationId; setCom
   const tag = '';// removed active suffix per request
   const activeColor = it.state === 'ACTIVE_LOCATION' ? '#2ea84d' : (it.state === 'IN_TRANSFER' ? '#cfa640' : '#d4dde4');
   const clickable = !isGround; // space items enter command panel
+  // Blue highlight conditions:
+  //  - Tsunami dam module once constructed (state BUILT or later, never IN_TRANSFER)
+  //  - Orbital habitat once it is stationed at LEO (location==='LEO' and state AT_LOCATION or ACTIVE_LOCATION)
+  const isDam = bp.type === 'tsunami-dam-module';
+  const isBunker = bp.type === 'impact-bunker';
+  const isHab = bp.type === 'orbital-habitat';
+  const damHighlighted = (isDam || isBunker) && (it.state==='BUILT' || it.state==='PREPPED_LAUNCH');
+  // Habitat highlight only when actually in space at LEO (not during build on ground)
+  const habitatHighlighted = isHab && it.location === 'LEO' && (it.state==='AT_LOCATION' || it.state==='ACTIVE_LOCATION');
+  const highlightBlue = damHighlighted || habitatHighlighted;
+  const baseBg = '#202b35';
+  const highlightBg = 'linear-gradient(90deg, #1d3847, #214458)'; // softer, closer to base background
+  const borderColor = highlightBlue ? '#335b73' : '#2d3a46';       // muted border
+  const outerShadow = highlightBlue ? '0 0 0 1px #2a4f65, 0 0 6px -2px #1e3a4788' : 'none'; // reduced glow
   return (
     <div key={it.id}
       onClick={()=>{ if(clickable) setCommandContext({ location: locId as LocationId, itemId: it.id, mode:'root' }); }}
       style={{
         marginBottom:3,
         padding:'2px 3px 3px',
-        background:'#202b35',
-        border:'1px solid #2d3a46',
+        background: highlightBlue ? highlightBg : baseBg,
+        border:'1px solid '+borderColor,
         borderRadius:3,
         display:'flex',
         flexDirection:'row',
         alignItems:'center',
         gap:4,
         position:'relative',
-        cursor: clickable ? 'pointer' : 'default'
+        cursor: clickable ? 'pointer' : 'default',
+        boxShadow: outerShadow,
+        transition:'background 240ms, box-shadow 260ms, border-color 240ms'
       }}>
       <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', position:'relative' }}>
   <div style={{ fontSize:10, fontWeight:600, letterSpacing:0.3, color:activeColor, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', position:'relative' }}>{bp.name}{tag}
@@ -57,7 +74,7 @@ function InventoryRow(props:{ it:any; isGround:boolean; locId:LocationId; setCom
             <span style={{ marginLeft:4, fontSize:9, fontWeight:600, color:'#cfa640' }}>→ { (it.transfer as any).destination==='IMPACT' ? 'Impact' : it.transfer.destination }</span>
           )}
         </div>
-  {( (bp as any).type!=='tsunami-dam-module') && (bp.type!=='orbital-habitat') && !isGround && it.fuelCapacityTons !== undefined && it.state!=='IN_TRANSFER' && (()=> {
+  {( (bp as any).type!=='tsunami-dam-module') && (bp as any).type!=='impact-bunker' && (bp.type!=='orbital-habitat') && !isGround && it.fuelCapacityTons !== undefined && it.state!=='IN_TRANSFER' && (()=> {
           const fuelNow = (it.fuelTons||0); const cap = (it.fuelCapacityTons||1); const ratio = Math.max(0, Math.min(1, fuelNow/cap));
           const r = Math.round(0x40 + (0xff-0x40)*ratio); const g = Math.round(0x29 + (0x9b-0x29)*ratio); const b = Math.round(0x15 + (0x2f-0x15)*ratio);
           const color = `rgb(${r},${g},${b})`;
@@ -90,7 +107,7 @@ function InventoryRow(props:{ it:any; isGround:boolean; locId:LocationId; setCom
             );
         })()}
         {/* Additional inline buttons (abort landing / launch prep) retained from original UI only for ground or landing states */}
-  {isGround && (it.state==='BUILT' || it.state==='PREPPED_LAUNCH') && (bp as any).type!=='tsunami-dam-module' && (()=> {
+  {isGround && (it.state==='BUILT' || it.state==='PREPPED_LAUNCH') && (bp as any).type!=='tsunami-dam-module' && (bp as any).type!=='impact-bunker' && (()=> {
           const launchAction = economyState.actions.find(a=> a.kind==='LAUNCH' && a.status==='PENDING' && a.payload.itemId===it.id);
           const abortAction = economyState.actions.find(a=> a.kind==='ABORT_PREP' && a.status==='PENDING' && a.payload.itemId===it.id && a.payload.target==='LAUNCH');
           const isPrepping = !!launchAction; const isPrepped = it.state==='PREPPED_LAUNCH'; const isAborting = !!abortAction;
@@ -187,22 +204,125 @@ function InventoryRow(props:{ it:any; isGround:boolean; locId:LocationId; setCom
 
 export const EconomyPanel: React.FC = () => {
   const state = useEconomy();
+  // Track completed builds already logged
+  const loggedBuildsRef = React.useRef<Set<string>>(new Set());
+  // Track completed relocations already logged
+  const loggedRelocationsRef = React.useRef<Set<string>>(new Set());
+  // Track items that have been observed in transfer to later allow arrival logging
+  const seenInTransferRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    // For each inventory item that is BUILT and not yet logged, emit BUILD_COMPLETED
+    for (const it of state.inventory) {
+      if (it.state === 'BUILT' && !loggedBuildsRef.current.has(it.id)) {
+        const bp = BLUEPRINTS.find(b=>b.type===it.blueprint);
+        if (bp) {
+          const isDam = bp.type === 'tsunami-dam-module';
+          const isBunker = bp.type === 'impact-bunker';
+          const label = isDam
+            ? `Tsunami dam operational: ${bp.name}`
+            : (isBunker ? `Impact bunker operational: ${bp.name}` : `Construction completed: ${bp.name}`);
+          import('../../../solar_system/impact/mitigationHistory').then(m => m.addMitigationEvent({
+            kind:'BUILD_COMPLETED',
+            label,
+            simTimeSec: state.timeSec,
+            highlight: isDam || isBunker
+          })).catch(()=>{});
+        }
+        loggedBuildsRef.current.add(it.id);
+      }
+    }
+  }, [state.inventory, state.timeSec]);
+
+  React.useEffect(() => {
+    // Log relocation only when transfer ends (arrival). Items that were IN_TRANSFER move to AT_LOCATION or ACTIVE_LOCATION.
+    for (const it of state.inventory) {
+      if (it.state === 'IN_TRANSFER') {
+        seenInTransferRef.current.add(it.id);
+        continue;
+      }
+      const arrived = (it.state === 'AT_LOCATION' || it.state === 'ACTIVE_LOCATION') && seenInTransferRef.current.has(it.id);
+      if (arrived && !loggedRelocationsRef.current.has(it.id)) {
+        const dest = it.location || 'Unknown';
+        const bp = BLUEPRINTS.find(b=>b.type===it.blueprint);
+        const name = bp ? bp.name : it.blueprint;
+        if (bp && bp.type === 'orbital-tanker') {
+          // New: specialized tanker relocation 'updated' event label
+          import('../../../solar_system/impact/mitigationHistory').then(m => m.addMitigationEvent({
+            kind:'LOCATION_CHANGE',
+            label:`Orbital tanker updated (relocated to ${dest})`,
+            simTimeSec: state.timeSec
+          })).catch(()=>{});
+        } else {
+          import('../../../solar_system/impact/mitigationHistory').then(m => m.addMitigationEvent({
+            kind:'LOCATION_CHANGE',
+            label:`${name} relocated to ${dest}`,
+            simTimeSec: state.timeSec
+          })).catch(()=>{});
+        }
+        loggedRelocationsRef.current.add(it.id);
+      }
+    }
+  }, [state.inventory, state.timeSec]);
   // Ground construct mode toggle
   const [constructMode, setConstructMode] = React.useState(false);
   // Command mode: which location panel is showing commands and for which item
   const [commandContext, setCommandContext] = React.useState<{ location: LocationId; itemId: string; mode: 'root' | 'transfer' | 'relocate' } | null>(null);
   const researchInQueue = new Set(state.actions.filter(a => a.kind==='RESEARCH' && a.status==='PENDING').map(a => a.payload.researchId));
   const canStartResearch = (id: string) => !state.researchUnlocked.has(id as any) && !researchInQueue.has(id);
-  const doResearch = (id: string) => { try { startResearch(state, id as any); notify(); } catch(e){ console.warn(e);} };
+  const doResearch = (id: string) => {
+    try {
+      startResearch(state, id as any);
+      notify();
+    } catch(e){ console.warn(e);} };
   const anyLaunchActive = state.actions.some(a => a.kind==='LAUNCH' && a.status==='PENDING');
   const anyLandingActive = state.actions.some(a => a.kind==='LAND' && a.status==='PENDING');
   const anyActivationPrepActive = state.actions.some(a => a.kind==='ACTIVATE_PREP' && a.status==='PENDING');
   const anyAbortActive = state.actions.some(a => a.kind==='ABORT_PREP' && a.status==='PENDING');
   const anyPrepActive = anyLaunchActive || anyLandingActive || anyActivationPrepActive || anyAbortActive;
   const anyLaunchPrepped = state.inventory.some(i=>i.state==='PREPPED_LAUNCH');
-  // Show all research (completed stay in carousel)
-  const allResearch = RESEARCH_DEFS;
+  // Research visibility filtering: hide entries whose research prereqs OR activation-based requirements unmet
+  const activatedBlueprintTypes = new Set<string>(state.inventory.filter(it => it.state==='ACTIVE_LOCATION').map(it=>it.blueprint));
+  const allResearch = RESEARCH_DEFS.filter(def => {
+    // Already unlocked => always visible (for reference)
+    if (state.researchUnlocked.has(def.id as any)) return true;
+    // Standard prereq chain
+    if (def.prereq && def.prereq.some(r=> !state.researchUnlocked.has(r as any))) return false;
+    // Activation-based gating
+    if (def.requiresActivationOf && def.requiresActivationOf.some(bt => !activatedBlueprintTypes.has(bt))) return false;
+    return true;
+  });
   const anyResearchActive = state.actions.some(a => a.kind==='RESEARCH' && a.status==='PENDING');
+  // Track completed research to emit mitigation events exactly once
+  const completedRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(()=>{
+    // For each unlocked research not yet recorded, find its original action to compute elapsed days
+    for (const r of state.researchUnlocked) {
+      if (!completedRef.current.has(r)) {
+        // Find corresponding finished action (we assume past actions not stored; derive from duration heuristics if needed)
+        // We attempt to locate a pending action with same id (won't exist after completion) so fallback: check if an action recently ended.
+        const act = state.actions.find(a=> a.kind==='RESEARCH' && a.payload.researchId===r);
+        // If still pending, skip (not completed yet)
+        if (act && act.status==='PENDING') continue;
+        // We approximate elapsed using research definition durationSec if we cannot find start/end (since finished actions vanish from state?)
+        const def = RESEARCH_DEFS.find(d=>d.id===r);
+        let elapsedDays = def ? (def.durationSec/86400) : 0;
+        // If we had an action object with timestamps (future enhancement: store historical), refine elapsed
+        if (act && (act as any).startTime !== undefined && (act as any).endTime !== undefined) {
+          elapsedDays = ((act as any).endTime - (act as any).startTime)/86400;
+        }
+        // Lazy load addMitigationEvent to avoid circular import concerns if any (static import acceptable too)
+        import('../../../solar_system/impact/mitigationHistory').then(mod => {
+          mod.addMitigationEvent({
+            kind:'RESEARCH_COMPLETED',
+            label: (def ? def.name : r) + ' unlocked',
+            simTimeSec: state.timeSec,
+            elapsedDays: elapsedDays
+          });
+        }).catch(()=>{});
+        completedRef.current.add(r);
+      }
+    }
+  }, [state.researchUnlocked, state.timeSec, state.actions]);
   // Simple button-based carousel --------------------------------------------------------------
   const CARD_W = 170;                 // visual card width
   const SLOT_W = 70;                  // horizontal step between cards (smaller => more overlap)
@@ -212,7 +332,14 @@ export const EconomyPanel: React.FC = () => {
   const viewportRef = React.useRef<HTMLDivElement | null>(null);  // visible scrolling area only
   const [viewportW, setViewportW] = React.useState(0);
   const [index, setIndex] = React.useState(0);
-  React.useEffect(()=>{ setIndex(0); },[allResearch.length]);
+  // Preserve current scroll position when new research becomes visible instead of snapping left.
+  // If current index exceeds new max, clamp; otherwise leave as-is.
+  React.useEffect(()=>{
+    setIndex(i => {
+      const max = Math.max(0, allResearch.length - 1);
+      return Math.min(i, max);
+    });
+  }, [allResearch.length]);
   React.useEffect(()=>{
     const measure = () => { if (viewportRef.current) setViewportW(viewportRef.current.clientWidth); };
     measure();
@@ -393,7 +520,6 @@ export const EconomyPanel: React.FC = () => {
                 if (bp.type==='orbital-habitat') return null;
 
                 if (bp.type==='laser-platform') {
-                  // Laser platform: On/Off toggle allowed only at L1, L3, L4, L5
                   const isActive = item.state === 'ACTIVE_LOCATION';
                   const meteor = ENTITIES.find(e => (e as any).id && (e as any).id.startsWith('meteor')) as any;
                   const allowedLocs: Record<string,string> = { 'SE_L1':'sun-earth-L1','SE_L3':'sun-earth-L3','SE_L4':'sun-earth-L4','SE_L5':'sun-earth-L5' };
@@ -410,17 +536,17 @@ export const EconomyPanel: React.FC = () => {
                       beam = new LaserWeapon(beamId, sourceId, meteor.id);
                       registerSimEntity(beam);
                     }
+                    const goingActive = beam ? !beam.isActive() : true;
                     if (beam) beam.setActive(!beam.isActive());
                     item.state = beam && beam.isActive() ? 'ACTIVE_LOCATION' : 'AT_LOCATION';
+                    if (goingActive && beam && beam.isActive()) {
+                      addMitigationEvent({ kind:'LASER_ONLINE', label:'Laser online', simTimeSec: state.timeSec, highlight:true });
+                    }
                     notify();
                   };
                   return (
                     <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                      <button
-                        disabled={!canToggle}
-                        onClick={onClick}
-                        className='progress-btn'
-                        style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isActive? '#2e6f2e':'#345061'), background:isActive? '#214021':'#25323e', color:isActive? '#6dff6d':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:canToggle? 'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', opacity:canToggle?1:0.5 }}>
+                      <button disabled={!canToggle} onClick={onClick} className='progress-btn' style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isActive? '#2e6f2e':'#345061'), background:isActive? '#214021':'#25323e', color:isActive? '#6dff6d':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:canToggle? 'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', opacity:canToggle?1:0.5 }}>
                         <span style={{ minWidth:28, textAlign:'left' }} className='label-layer'>{isActive? 'ON':'OFF'}</span>
                         <span style={{ flex:1, textAlign:'center' }} className='label-layer'>Laser</span>
                         <span style={{ minWidth:38, textAlign:'right', opacity:0.6 }} className='label-layer'>{' '}</span>
@@ -435,25 +561,24 @@ export const EconomyPanel: React.FC = () => {
                 }
 
                 if (bp.type==='space-telescope') {
-                  // Space telescope: On/Off only at L2
                   const isActive = item.state === 'ACTIVE_LOCATION';
                   const atL2 = item.location === 'SE_L2';
                   const canToggle = atL2;
                   const onClick = () => {
                     if (!canToggle) return;
                     try {
+                      const goingActive = !isActive;
                       if (isActive) { econActs.deactivateItem(state, item.id); }
                       else { econActs.activateItem(state, item.id); }
+                      if (goingActive) {
+                        addMitigationEvent({ kind:'TELESCOPE_ONLINE', label:'Space telescope online', simTimeSec: state.timeSec, highlight:true });
+                      }
                       notify();
                     } catch(e){ console.warn(e); }
                   };
                   return (
                     <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
-                      <button
-                        disabled={!canToggle}
-                        onClick={onClick}
-                        className='progress-btn'
-                        style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isActive? '#2e6f2e':'#345061'), background:isActive? '#214021':'#25323e', color:isActive? '#6dff6d':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:canToggle? 'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', opacity:canToggle?1:0.5 }}>
+                      <button disabled={!canToggle} onClick={onClick} className='progress-btn' style={{ padding:'4px 6px', borderRadius:4, border:'1px solid '+(isActive? '#2e6f2e':'#345061'), background:isActive? '#214021':'#25323e', color:isActive? '#6dff6d':'#d9e3ea', fontWeight:600, letterSpacing:0.35, cursor:canToggle? 'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative', opacity:canToggle?1:0.5 }}>
                         <span style={{ minWidth:28, textAlign:'left' }} className='label-layer'>{isActive? 'ON':'OFF'}</span>
                         <span style={{ flex:1, textAlign:'center' }} className='label-layer'>Telescope</span>
                         <span style={{ minWidth:38, textAlign:'right', opacity:0.6 }} className='label-layer'>{' '}</span>
@@ -499,7 +624,7 @@ export const EconomyPanel: React.FC = () => {
                   );
                 }
 
-                // Default direct activation
+                // Default direct activation (non-impactor)
                 return (
                   <button disabled={!canActivate} onClick={()=>{ if(canActivate){ activateItem(state, item.id); notify(); setCommandContext(null);} }} className="progress-btn" style={{ padding:'4px 6px', borderRadius:4, border:'1px solid #345061', background: canActivate? '#25323e' : '#1f2731', color: canActivate? '#d9e3ea' : '#7d8d99', fontWeight:600, letterSpacing:0.35, cursor:canActivate?'pointer':'default', fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <span style={{ minWidth:28, textAlign:'left' }} className="label-layer">{activationDurationDays.toFixed(0)}d</span>
@@ -553,9 +678,15 @@ export const EconomyPanel: React.FC = () => {
                 const landingPrepInProgress = state.actions.some(a=>a.kind==='LAND' && a.status==='PENDING' && a.payload.itemId===item.id);
                 const abortLandingInProgress = state.actions.some(a=>a.kind==='ABORT_PREP' && a.status==='PENDING' && a.payload.itemId===item.id && a.payload.target==='LAND');
                 const label = item.state==='PREPPED_LANDING' ? (abortLandingInProgress ? '...' : 'ABORT LANDING') : (landingPrepInProgress ? '...' : 'Prep Landing');
+                // Additional gating: orbital tanker must be at LEO to prep landing
+                const mustBeLeo = bp.type==='orbital-tanker';
+                const leoOk = !mustBeLeo || item.location==='LEO';
                 const disabled = item.state==='PREPPED_LANDING'
                   ? abortLandingInProgress
-                  : ( (anyPrepActive && !landingPrepInProgress) || (anyLaunchPrepped && !landingPrepInProgress) || !(item.state==='AT_LOCATION' || item.state==='ACTIVE_LOCATION') );
+                  : ( (anyPrepActive && !landingPrepInProgress)
+                      || (anyLaunchPrepped && !landingPrepInProgress)
+                      || !(item.state==='AT_LOCATION' || item.state==='ACTIVE_LOCATION')
+                      || !leoOk );
                 const isAbort = item.state==='PREPPED_LANDING';
                 const durationLeftDays = (()=>{
                   const act = state.actions.find(a=> (a.kind==='LAND' || (a.kind==='ABORT_PREP' && a.payload.target==='LAND')) && a.status==='PENDING' && a.payload.itemId===item.id);
@@ -791,9 +922,29 @@ export const EconomyPanel: React.FC = () => {
       <div style={{ flex:'1 1 50%', minHeight:0, display:'flex', flexDirection:'column', marginBottom:0 }}>
   {allResearch.length === 0 && <div style={{ opacity:0.6, padding:'6px 0' }}>No research</div>}
   {allResearch.length > 0 && (
-          <div ref={containerRef} style={{ position:'relative', flex:1, overflow:'visible', padding:'26px 0 26px', display:'flex', alignItems:'stretch' }}>
+          <div ref={containerRef} style={{ position:'relative', flex:1, overflow:'visible', padding:'8px 0 12px', display:'flex', alignItems:'stretch' }}>
             {allResearch.length>1 && (
-              <button onClick={()=>go(-1)} disabled={index===0} style={{ width:38, flex:'0 0 auto', marginRight:6, fontSize:20, background:'#1f2731', border:'1px solid #2d3a46', color:'#d0d7dd', borderRadius:6, cursor:index===0?'default':'pointer', position:'relative', zIndex:500 }}>◀</button>
+              <button
+                onClick={()=>go(-1)}
+                disabled={index===0}
+                style={{
+                  width:38,
+                  flex:'0 0 auto',
+                  marginRight:6,
+                  fontSize:20,
+                  background:'#1f2731',
+                  border:'1px solid #2d3a46',
+                  color:'#d0d7dd',
+                  borderRadius:6,
+                  cursor:index===0?'default':'pointer',
+                  position:'relative',
+                  zIndex:500,
+                  height:'66%',              // shrink to ~2/3 container height
+                  alignSelf:'center',        // vertically center within container
+                  display:'flex',
+                  alignItems:'center',
+                  justifyContent:'center'
+                }}>◀</button>
             )}
             <div ref={viewportRef} style={{ position:'relative', flex:1, overflow:'visible' }}>
               <div style={{ position:'absolute', top:0, left:0, height:'100%', display:'flex', gap:0, transform:`translateX(${trackX}px)`, transition:'transform 320ms cubic-bezier(.22,.75,.3,1)' }}>
@@ -846,7 +997,27 @@ export const EconomyPanel: React.FC = () => {
               </div>
             </div>
             {allResearch.length>1 && (
-              <button onClick={()=>go(1)} disabled={index===maxIndex} style={{ width:38, flex:'0 0 auto', marginLeft:6, fontSize:20, background:'#1f2731', border:'1px solid #2d3a46', color:'#d0d7dd', borderRadius:6, cursor:index===maxIndex?'default':'pointer', position:'relative', zIndex:500 }}>▶</button>
+              <button
+                onClick={()=>go(1)}
+                disabled={index===maxIndex}
+                style={{
+                  width:38,
+                  flex:'0 0 auto',
+                  marginLeft:6,
+                  fontSize:20,
+                  background:'#1f2731',
+                  border:'1px solid #2d3a46',
+                  color:'#d0d7dd',
+                  borderRadius:6,
+                  cursor:index===maxIndex?'default':'pointer',
+                  position:'relative',
+                  zIndex:500,
+                  height:'66%',              // shrink to ~2/3 container height
+                  alignSelf:'center',        // vertically center within container
+                  display:'flex',
+                  alignItems:'center',
+                  justifyContent:'center'
+                }}>▶</button>
             )}
           </div>
         )}

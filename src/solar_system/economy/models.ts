@@ -1,6 +1,7 @@
 // Economy models and types
-export type ResearchId = 'small-kinetic' | 'large-kinetic' | 'space-laser' | 'tsunami-dams' | 'giant-kinetic' | 'orbital-tanker-tech' | 'orbital-habitat-tech' | 'space-telescope-tech';
-export type BuildableType = 'small-impactor' | 'large-impactor' | 'giant-impactor' | 'laser-platform' | 'fuel-tank' | 'tsunami-dam-module' | 'orbital-tanker' | 'orbital-habitat' | 'space-telescope';
+// Telescope research reintroduced: must research 'space-telescope-tech' to build the space telescope.
+export type ResearchId = 'small-kinetic' | 'large-kinetic' | 'space-laser' | 'tsunami-dams' | 'giant-kinetic' | 'orbital-tanker-tech' | 'orbital-habitat-tech' | 'space-telescope-tech' | 'evacuation-routes' | 'impact-bunkers';
+export type BuildableType = 'small-impactor' | 'large-impactor' | 'giant-impactor' | 'laser-platform' | 'fuel-tank' | 'tsunami-dam-module' | 'orbital-tanker' | 'orbital-habitat' | 'space-telescope' | 'impact-bunker';
 // Simplified location model: only Low Earth Orbit and an aggregated 'DEPLOYED' region for anything beyond
 export type LocationId = 'LEO' | 'DEPLOYED' | 'SE_L1' | 'SE_L2' | 'SE_L3' | 'SE_L4' | 'SE_L5';
 
@@ -11,6 +12,8 @@ export interface ResearchDef {
   durationSec: number;
   unlocks: BuildableType[];
   prereq?: ResearchId[];
+  // Optional: require that certain buildable types have been activated (at least once) before this research becomes visible / startable
+  requiresActivationOf?: BuildableType[];
 }
 
 export interface BuildableBlueprint {
@@ -22,6 +25,7 @@ export interface BuildableBlueprint {
   launchCostFunds: number; // billions
   activationFuelTons?: number;
   activationDurationSec?: number;
+  fuelCapacityTons?: number; // explicit capacity override (e.g., habitats 0)
 }
 
 export type InventoryState =

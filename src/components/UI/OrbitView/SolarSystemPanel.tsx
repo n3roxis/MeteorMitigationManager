@@ -2,7 +2,7 @@ import {useEffect, useRef} from 'react';
 import {Application, Container} from 'pixi.js';
 import {ORBITS} from "../../../solar_system/data/orbits";
 import {EARTH_MOON_BARYCENTER, MOON, PLANETS, SUN, EARTH} from "../../../solar_system/data/bodies";
-import {METEOR_UNO, METEORS} from "../../../solar_system/data/meteors";
+import {METEORS} from "../../../solar_system/data/meteors";
 import {GlowEffect} from "../../../solar_system/entities/GlowEffect";
 import {clearEntities, ENTITIES, registerEntity} from "../../../solar_system/state/entities";
 import {advanceSimulation, resetSimulationTime, SIM_TIME_DAYS} from "../../../solar_system/state/simulation";
@@ -15,28 +15,21 @@ import {
 import {Orbit} from "../../../solar_system/entities/Orbit";
 import {PathPredictor} from "../../../solar_system/entities/PathPredictor";
 import {PlanetLabel} from "../../../solar_system/entities/PlanetLabel";
-import LaunchButton from './LaunchButton';
 import {computeLagrangePoints} from '../../../solar_system/utils/lagrange';
 import {LagrangePoint} from '../../../solar_system/entities/LagrangePoint';
 import {Vector} from '../../../solar_system/utils/Vector';
-import {processActions} from '../../../solar_system/economy/actions';
 import {economyState} from '../../../solar_system/economy/state';
-import {InterceptPath} from "../../../solar_system/entities/Interceptor/InterceptPath.ts";
-import {SecondsPerDay, SecondsPerMonth} from "../../../solar_system/utils/constants.ts";
-import {Projectile} from "../../../solar_system/entities/Projectile.ts";
+import {processActions} from '../../../solar_system/economy/actions';
+// Debug projectile / interceptor related imports & logic removed.
 
 
-let interceptor: InterceptPath | undefined = undefined; // TEMPORARY
 export let GLOBAL_PIXI_APP: Application | null = null;
-let trajectoryIndex: number = 0;
-let trajectoryCount: number = 0;
-let projectileCounter: number = 0;
 
 export const SolarSystemPanel = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const planets = PLANETS; // constants for planets only
   const orbits = ORBITS;   // includes planetary + moon orbit
-  const meteors = METEORS;   //
+  const meteors = METEORS;   // will be spawned only after telescope activation
 
   useEffect(() => {
     const el = containerRef.current;
@@ -64,7 +57,7 @@ export const SolarSystemPanel = () => {
     app.stage.addChild(scene);
     // Track last entity count to start newly added entities (e.g., projectiles)
     let lastEntityCount = 0;
-  // Camera mode toggle (press 'c' to switch between barycenter and sun)
+  // Camera mode toggle (press 'c' to cycle barycenter -> sun -> projectile)
   let cameraMode: 'barycenter' | 'sun' | 'projectile' = 'projectile';
   let lastProjectileId: string | null = null;
 
@@ -124,17 +117,7 @@ export const SolarSystemPanel = () => {
         addLP('sun-earth-L4', () => sunEarthCompute().L4);
         addLP('sun-earth-L5', () => sunEarthCompute().L5);
       }
-      for (const m of meteors) {
-        m.start(app);
-        const gfx = m.graphics;
-        if (gfx) scene.addChild(gfx); // reparent
-        registerEntity(m);
-        const predictor = new PathPredictor(`${m.id}-predictor`, m);
-        predictor.start(app);
-        const pg = predictor.graphics;
-        if (pg) scene.addChild(pg);
-        registerEntity(predictor);
-      }
+      // Meteors deferred: spawned only once a space telescope becomes active
 
       // Add Moon body (already defined in bodies.ts) and its label
       MOON.start(app);
@@ -163,8 +146,28 @@ export const SolarSystemPanel = () => {
     let statsTimer = 0; // ms
     let lastPerfUpdate = 0;
 
+    let meteorsSpawned = false;
+    const spawnMeteorsIfReady = () => {
+      if (meteorsSpawned) return;
+      const telescopeActive = economyState.inventory.some(i => i.blueprint === 'space-telescope' && i.state === 'ACTIVE_LOCATION');
+      if (!telescopeActive) return;
+      for (const m of meteors) {
+        m.start(app);
+        const gfx = m.graphics;
+        if (gfx) scene.addChild(gfx);
+        registerEntity(m);
+        const predictor = new PathPredictor(`${m.id}-predictor`, m);
+        predictor.start(app);
+        const pg = predictor.graphics;
+        if (pg) scene.addChild(pg);
+        registerEntity(predictor);
+      }
+      meteorsSpawned = true;
+    };
+
     const physicsStep = () => {
       advanceSimulation(physicsDtSimDays); // sim time advanced in days
+      spawnMeteorsIfReady();
       for (const e of ENTITIES) {
         if (!(e instanceof (Orbit as any))) e.update(physicsDtSimSeconds);
       }
@@ -209,18 +212,17 @@ export const SolarSystemPanel = () => {
                 if (cameraMode === 'sun' && SUN) {
                     scene.position.set(centerX, centerY);
                 } else if (cameraMode === 'projectile') {
-                    // Track most recently spawned InterceptorProjectile or generic Projectile
-                    const projectiles = ENTITIES.filter(e=>{
+                    // Follow most recently created projectile (InterceptorProjectile or Projectile)
+                    const projectiles = ENTITIES.filter(e => {
                       const name = (e as any).constructor && (e as any).constructor.name;
                       return name === 'InterceptorProjectile' || name === 'Projectile';
                     }) as any[];
                     if (projectiles.length) {
-                      // Update lastProjectileId if new ones appear
-                      if (!lastProjectileId || !projectiles.find(p=>p.id===lastProjectileId)) {
-                        // pick most recently added (last in ENTITIES intersection)
-                        lastProjectileId = projectiles[projectiles.length-1].id;
+                      // If current tracked projectile no longer exists or not set, pick the newest
+                      if (!lastProjectileId || !projectiles.find(p => p.id === lastProjectileId)) {
+                        lastProjectileId = projectiles[projectiles.length - 1].id;
                       }
-                      const target = projectiles.find(p=>p.id===lastProjectileId) || projectiles[projectiles.length-1];
+                      const target = projectiles.find(p => p.id === lastProjectileId) || projectiles[projectiles.length - 1];
                       const tx = target.position.x * POSITION_SCALE;
                       const ty = target.position.y * POSITION_SCALE;
                       scene.position.set(centerX - tx, centerY - ty);
@@ -307,135 +309,6 @@ export const SolarSystemPanel = () => {
         // Cycle camera modes: barycenter -> sun -> projectile -> barycenter
         cameraMode = cameraMode === 'barycenter' ? 'sun' : (cameraMode === 'sun' ? 'projectile' : 'barycenter');
       }
-
-      if (e.key === 'v' || e.key === 'V') {
-        console.log("Creating new Interceptor")
-        interceptor = new InterceptPath("interceptor_test", EARTH, METEOR_UNO)
-        registerEntity(interceptor)
-      }
-      if (e.key === 'b' || e.key === 'B') {
-        if (interceptor) {
-          console.log("Finding trajectory")
-          trajectoryCount = interceptor.findTrajectories([SecondsPerDay * 10, SecondsPerMonth, SecondsPerMonth * 2, SecondsPerMonth * 3, SecondsPerMonth * 4, SecondsPerMonth * 5, SecondsPerMonth * 6, SecondsPerMonth * 7, SecondsPerMonth * 8, SecondsPerMonth * 9], 100000)
-          trajectoryIndex = -1
-        }
-      }
-      if (e.key === 'n' || e.key === 'N') {
-        if (interceptor) {
-          console.log("Chose trajectory")
-          if (trajectoryCount == 0) {
-            console.log("No trajectory exists")
-
-          } else {
-            trajectoryIndex++
-            if (trajectoryIndex >= trajectoryCount - 1) trajectoryIndex = 0
-            interceptor?.chooseTrajectory(trajectoryIndex)
-            console.log("Chose trajectory " + trajectoryIndex)
-          }
-
-        }
-      }
-      if (e.key === 'l' || e.key === 'L') {
-        if (interceptor) {
-          console.log("Launch dummy")
-          const velocity = interceptor.chosenPath?.departureVelocity
-          if (velocity) {
-            const proj = new Projectile(`proj5-${++projectileCounter}`, EARTH.position, velocity);
-            registerEntity(proj);
-          } else {
-            console.log("Velocity was undefined")
-          }
-        }
-      }
-      if (e.key === 'm' || e.key === 'M') {
-        if (interceptor) {
-          console.log("Calculating interceptor path")
-          interceptor?.calculatePath()
-        }
-      }
-      if (e.key === 'j' || e.key === 'J') {
-        if (interceptor) {
-          console.log("Print trajectory")
-          interceptor?.printTrace()
-        }
-      }
-      if (e.key === 'k' || e.key === 'K') {
-        if (interceptor) {
-          console.log("Drawing interceptor path")
-          interceptor?.drawTrace()
-        }
-      }
-
-      if (e.key === 'p' || e.key === 'P') {
-
-        console.log("Complete interceptor test")
-        interceptor = new InterceptPath("interceptor_test", EARTH, METEOR_UNO)
-        registerEntity(interceptor)
-
-        console.log("Finding trajectory")
-        trajectoryCount = interceptor.findTrajectories([SecondsPerDay * 10, SecondsPerMonth, SecondsPerMonth * 2, SecondsPerMonth * 3, SecondsPerMonth * 4, SecondsPerMonth * 5, SecondsPerMonth * 6, SecondsPerMonth * 7, SecondsPerMonth * 8, SecondsPerMonth * 9], 100000)
-
-        for (let i = 0; i < trajectoryCount; i++) {
-          console.log("Chose trajectory " + i)
-          interceptor?.chooseTrajectory(i)
-
-          //console.log("Calculating interceptor path")
-          //interceptor?.calculatePath()
-
-          console.log("Launch dummy")
-          const chosenPath = interceptor.chosenPath
-          if (chosenPath) {
-            const velocity = chosenPath.departureVelocity
-            const cost = chosenPath.fuelConsumptionMass! / 1000
-            const meteorVChange = chosenPath.meteorVelocityChange!.length()
-            const proj = new Projectile(`proj5-${++projectileCounter}`, EARTH.position, velocity);
-            registerEntity(proj);
-            console.log("Launching projectile with velocity " + velocity.length() + " and cost " + cost + " and meteorVChange " + meteorVChange)
-          } else {
-            console.log("Velocity was undefined")
-          }
-
-        }
-      }
-      /*
-      TODO mach genau hier weiter:
-
-      npm i hyp2f1
-
-      declare module "hyp2f1" {
-// 2F1(a,b;c;z) -> number (real)
-export default function hyp2f1(
-a: number,
-b: number,
-c: number,
-z: number
-): number;
-}
-
-  Cephes raauslöschen weil wtf
-
-
-  Dann möglicherweise wrapper für mehr clean?
-
-  import hyp2f1 from "hyp2f1";
-
-export function gauss2F1(
-a: number,
-b: number,
-c: number,
-z: number
-): number {
-return hyp2f1(a, b, c, z);
-}
-
-
-      functions auf keys setzen
-      testen wann es lösungen gibt,
-      wie viele es gibt,
-      ob der draw klappt
-      ob die lösungen tatsächlich treffen
-       */
-
     };
     window.addEventListener('keydown', onKey);
 
@@ -483,7 +356,6 @@ return hyp2f1(a, b, c, z);
 
   return (
     <div ref={containerRef} style={{width: '100%', height: '100%', position: 'relative'}}>
-      <LaunchButton/>
     </div>
   );
 };

@@ -55,7 +55,7 @@ export function startBuild(state: GameEconomyState, type: BuildableType) {
 export function launchItem(state: GameEconomyState, itemId: string) {
   const item = state.inventory.find(i => i.id === itemId); if (!item || item.state !== 'BUILT') throw new Error('Not launch-prepable');
   const bp = BLUEPRINT_INDEX.get(item.blueprint)!;
-  if (bp.type === 'tsunami-dam-module') throw new Error('Tsunami dam modules are ground infrastructure and cannot be launched');
+  if (bp.type === 'tsunami-dam-module' || bp.type === 'impact-bunker') throw new Error('Ground infrastructure cannot be launched');
   // Launch cost uses fully-fueled (wet) mass: dry mass + max fuel capacity (assumed filled for launch logistics)
   const wetLaunchMass = item.massTons + (item.fuelCapacityTons || 0);
   const cost = computeLaunchCostFunds(wetLaunchMass);
@@ -96,6 +96,10 @@ export function prepareLanding(state: GameEconomyState, itemId: string) {
   if (!item) throw new Error('Missing');
   const bp = BLUEPRINT_INDEX.get(item.blueprint);
   if (bp && bp.type==='orbital-habitat') throw new Error('Orbital habitat cannot be landed');
+  // New rule: orbital tanker can only prep landing from LEO
+  if (bp && bp.type==='orbital-tanker') {
+    if (item.location !== 'LEO') throw new Error('Orbital tanker can only land from LEO');
+  }
   if (!(item.state === 'AT_LOCATION' || item.state === 'ACTIVE_LOCATION')) throw new Error('Cannot prep landing from current state');
   // 1 day landing prep
   const dur = 1 * 24 * 3600;
@@ -271,19 +275,22 @@ function finalizeAction(state: GameEconomyState, act: ScheduledAction) {
           let cap: number;
             switch (bp.type) {
               case 'small-impactor':
-                cap = 2; // custom override
+                cap = 2; // custom override (impactor internal propellant store)
                 break;
               case 'orbital-tanker':
-                cap = 4; // custom override
+                cap = 4; // tanker capacity override
+                break;
+              case 'space-telescope':
+                cap = 1; // telescope minimal service propellant bus (for relocation/attitude) – treat as 1 ton capacity
                 break;
               default:
                 cap = (bp.activationFuelTons || 0) > 0 ? (bp.activationFuelTons || 0) * 2 : 1;
             }
             item.fuelCapacityTons = cap;
-            if (bp.type === 'orbital-tanker') {
-              item.fuelTons = cap; // tanker starts full
+            if (bp.type === 'orbital-tanker' || bp.type === 'small-impactor' || bp.type === 'space-telescope') {
+              item.fuelTons = cap; // these start fully fueled per new requirement
             } else {
-              item.fuelTons = 0; // others start empty
+              item.fuelTons = 0; // others start empty as before
             }
         }
         moveItemToFront(state, item); // new ground asset appears at top
@@ -471,16 +478,18 @@ export function computeFuelCostForTransfer(massTons: number, origin: LocationId,
   return massTons * 0.6;
 }
 function computeTransferDuration(origin: LocationId, destination: LocationId) {
-  if (origin === destination) return 7 * 24 * 3600;
+  // Shortened durations (2025-10-05 tuning). Sim slowed ~10x; transfer times reduced ~2.5x from prior to retain
+  // meaningful staging without excessive wait. Previous vs new in comments above each branch.
+  if (origin === destination) return 3 * 24 * 3600; // was 7d
   if (ORBITAL_ADJACENCY[origin]?.includes(destination)) {
-    let days = 60; // baseline
-    if ((origin==='LEO' && (destination==='SE_L1' || destination==='SE_L2')) || ((destination==='LEO') && (origin==='SE_L1' || origin==='SE_L2'))) days = 30;
-    else if ((origin==='SE_L1' || origin==='SE_L2') && (destination==='SE_L4' || destination==='SE_L5')) days = 90;
-    else if ((origin==='SE_L4' || origin==='SE_L5') && (destination==='SE_L3')) days = 120;
-    else if (origin==='SE_L3' && (destination==='SE_L4' || destination==='SE_L5')) days = 120;
+    let days = 24; // baseline (was 60)
+    if ((origin==='LEO' && (destination==='SE_L1' || destination==='SE_L2')) || ((destination==='LEO') && (origin==='SE_L1' || origin==='SE_L2'))) days = 12; // was 30
+    else if ((origin==='SE_L1' || origin==='SE_L2') && (destination==='SE_L4' || destination==='SE_L5')) days = 36; // was 90
+    else if ((origin==='SE_L4' || origin==='SE_L5') && (destination==='SE_L3')) days = 48; // was 120
+    else if (origin==='SE_L3' && (destination==='SE_L4' || destination==='SE_L5')) days = 48; // was 120
     return days * 24 * 3600;
   }
-  return 60 * 24 * 3600;
+  return 24 * 24 * 3600; // legacy path 60d -> 24d
 }
 
 // Preview helpers (pure functions)

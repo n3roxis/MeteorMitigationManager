@@ -1,6 +1,7 @@
 import { Viewport } from 'pixi-viewport';
 import { Application, Assets, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
+import '../../../Logic/formulas.test';
 import { DataBroker, toMercator } from '../../../Logic/Utils/TranslationInterface';
 import { Vector } from '../../../solar_system/utils/Vector';
 import { ImpactStack } from '../../Graphics/Impact/ImpactStack';

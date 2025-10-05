@@ -60,3 +60,27 @@ export class DataBroker {
         this._impact = impact;
     }
 }
+
+export enum RadiusType{
+    THERM_VIS, // two points
+    THERM_ACT, // two points
+    SEIS, //two points and richter
+    CRATER, // two points and depth
+    SHOCK // two points
+}
+
+export class Radius{
+    type:RadiusType
+    center:{long:number,lat:number}
+    radius:{long:number,lat:number}
+    data:number
+    tooltip:string
+
+    constructor(type:RadiusType,center:{long:number,lat:number},radius:{long:number,lat:number},data:number,tooltip:string){
+        this.type = type;
+        this.center = center;
+        this.radius = radius;
+        this.data = data;
+        this.tooltip = tooltip;
+    }
+}

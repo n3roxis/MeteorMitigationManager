@@ -1,10 +1,12 @@
 import { Application, Color, Graphics } from "pixi.js"
+import { RadiusType } from "../../../Logic/Utils/TranslationInterface"
 import { UpdatableEntity } from "../../../solar_system/entities/Entity"
 import { Vector } from "../../../solar_system/utils/Vector"
 
 
 export class Shockwave implements UpdatableEntity{
-    id: string
+    id: string = ""
+    type: RadiusType
     position = Vector.zero
     off = Vector.zero
     radius:number
@@ -17,12 +19,13 @@ export class Shockwave implements UpdatableEntity{
     enabled = true
 
 
-    constructor(id:string,position:Vector,radius:number){
-        this.id = id
+    constructor(type:RadiusType,position:Vector,radius:number){
+        this.type = type
         this.position = position;
         this.radius = radius;
         this.gfx = new Graphics();
     }
+    
     
 
     start(app: Application): void {
@@ -55,14 +58,20 @@ export class Shockwave implements UpdatableEntity{
         }
     }
 
-    static createAir(position:Vector,radius:number):Shockwave {
-        return new Shockwave("air",position,radius);
+    static createShock(radius:number):Shockwave {
+        return new Shockwave(RadiusType.SHOCK,Vector.zero,radius);
     }
-    static createTherm(position:Vector,radius:number):Shockwave{
-        return new Shockwave("therm",position,radius);
+    static createThermVis(radius:number):Shockwave{
+        return new Shockwave(RadiusType.THERM_VIS,Vector.zero,radius);
     }
-    static createSeis(position:Vector, radius:number):Shockwave{
-        return new Shockwave("seis",position,radius);
+    static createThermAct(radius:number):Shockwave{
+        return new Shockwave(RadiusType.THERM_ACT,Vector.zero,radius);
+    }
+    static createSeis(radius:number):Shockwave{
+        return new Shockwave(RadiusType.SEIS,Vector.zero,radius);
+    }
+    static createCrate(radius:number):Shockwave{
+        return new Shockwave(RadiusType.CRATER,Vector.zero,radius);
     }
 
     get graphics(): Graphics | null { return this.gfx; }

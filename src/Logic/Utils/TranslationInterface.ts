@@ -1,4 +1,3 @@
-import { Vector } from "../../solar_system/utils/Vector";
 import { SCALE } from "./Constants";
 
 export const toMercator = (lambda:number,phi:number) =>{
@@ -26,17 +25,6 @@ export class Impact{
         this.angle = angle;
         this.longLat = longLat;
     }
-}
-
-export class SanitizedImpact{
-    radius:number=0
-    position:Vector=Vector.zero();
-
-    constructor(impact:Impact){
-
-    }
-
-
 }
 
 export class DataBroker {

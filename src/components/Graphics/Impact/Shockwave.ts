@@ -1,4 +1,4 @@
-import { Application, Color, Graphics } from "pixi.js"
+import { Application, Graphics } from "pixi.js"
 import { RadiusType } from "../../../Logic/Utils/TranslationInterface"
 import { UpdatableEntity } from "../../../solar_system/entities/Entity"
 import { Vector } from "../../../solar_system/utils/Vector"
@@ -10,8 +10,7 @@ export class Shockwave implements UpdatableEntity{
     position = Vector.zero
     off = Vector.zero
     radius:number
-    color = new Color('#00abff')
-    opacity = 0.4;
+    color = {color:'#00df00'}
     private gfx: Graphics | null = null
     private period = 2
     private cT = 0
@@ -50,7 +49,6 @@ export class Shockwave implements UpdatableEntity{
             if(this.gfx){
                 this.gfx.clear();
                 const circ = this.gfx.circle(this.position.x, this.position.y, this.animate ? currentRadius : this.radius);
-                circ.alpha = this.opacity;
                 circ.fill(this.color);
                 
                 this.gfx.position.set(this.off.x, this.off.y);

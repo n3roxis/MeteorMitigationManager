@@ -1,10 +1,9 @@
-import { Color } from "pixi.js";
 
 export const SCALE = 490;
 export const PRESSURE_FACTOR = 2;
 
-export const THERM_VIS_COL = new Color('#e6b00fff');
-export const THERM_ACT_COL = new Color('#e6450fff');
-export const SEIS_COL_MAX = new Color('#512f1aff');
-export const SHOCK_COL = new Color('#0f89e6ff');
-export const CRATER_COL = new Color('#342a12ff');
+export const THERM_VIS_COL = {color:'#e6b00fff',alpha:'0.2'};
+export const THERM_ACT_COL = {color:'#e6450fff',alpha:'0.2'};
+export const SEIS_COL_MAX = {color:'#512f1aff',alpha:'0.2'};
+export const SHOCK_COL = {color:'#0f89e6ff',alpha:'0.2'};
+export const CRATER_COL = {color:'#31ff34ff',alpha:'0.2'};

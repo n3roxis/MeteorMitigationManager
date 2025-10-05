@@ -1,21 +1,15 @@
 import { Viewport } from 'pixi-viewport';
 import { Application, Assets, Sprite } from 'pixi.js';
 import React, { useEffect, useRef } from 'react';
+import { calculateImpactRadii } from '../../../Logic/formulas';
 import '../../../Logic/formulas.test';
 import { DataBroker, toMercator } from '../../../Logic/Utils/TranslationInterface';
 import { Vector } from '../../../solar_system/utils/Vector';
 import { ImpactStack } from '../../Graphics/Impact/ImpactStack';
-import { Shockwave } from '../../Graphics/Impact/Shockwave';
 import WorldMap from './resources/WorldMap.png';
 
 
-const waves = [
-            Shockwave.createAir(Vector.zero,0),
-            Shockwave.createSeis(Vector.zero,0),
-            Shockwave.createTherm(Vector.zero,0),
-            Shockwave.createTherm(Vector.zero,0)
-          ]
-const stack = new ImpactStack("prediction",Vector.zero,waves);
+
 
 // Placeholder world map panel to build on later
 export const WorldMapPanel: React.FC = () => {
@@ -59,15 +53,22 @@ export const WorldMapPanel: React.FC = () => {
           map.position.set(rect.width/2,rect.height/2);
         
           // setup impact Stack
+
+          const stack = new ImpactStack("prediction",Vector.zero,[]);
+          stack.start(app);
+          
           
 
           app.ticker.add((tick)=>{
             const impact = DataBroker.instance.getImpact()
             if(impact){
+              stack.applyList(calculateImpactRadii(impact));
               const cord = toMercator(impact.longLat.lamb,impact.longLat.phi);
               stack.move(new Vector(cord.x,cord.y,0));
-              //TODO: Astrid stuff
+              stack.updateViewPort(viewport);
               stack.update(tick.deltaTime);
+            }else{
+              stack.disable();
             }
           })
   

@@ -292,6 +292,7 @@ export class PathPredictor implements UpdatableEntity {
         const angle = Math.acos(collisionR.normalized().dot(vRelAuPerSec.normalized()))
         const timeOfImpact = startSimSeconds + T1 + (collisionT ?? 0) // TODO ggf. korrigieren
         const {longitude, latitude} = vectorToLongLat(collisionR, timeOfImpact)
+        /*
         const impact: Impact = {
           velocity,
           angle,
@@ -299,6 +300,8 @@ export class PathPredictor implements UpdatableEntity {
           density: 0,
           longLat: {longitude, latitude},
         }
+
+         */
         //DataBroker.instance.setImpact(impact)
         //console.log("Collision detected: " + collisionR.x + " " + collisionR.y + " " + collisionR.z)
       } else {

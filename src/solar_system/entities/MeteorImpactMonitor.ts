@@ -36,15 +36,15 @@ export class MeteorImpactMonitor {
       DataBroker.instance.setImpact(null)
     } else {
       // HIT
-      const impact: Impact = {
-        angle: this.shiftsToAngle(shiftHorizontal, shiftVertical),
-        density: 0, // TODO this.meteor.density,
-        mass: this.meteor.mass,
-        longLat:
-          this.shiftsToLongLat(shiftHorizontal, shiftVertical),
-        velocity: this.velocity.length()
-      }
-      console.log("Impact: " + "   " + impact.longLat.longitude + "   " + impact.longLat.latitude + "   " + impact.angle + "   " + impact.mass + "   " + impact.velocity + "   " + impact.density)
+      const impact: Impact = new Impact(
+        "impact",
+        this.meteor.mass,
+        0, // TODO this.meteor.density,
+        this.velocity.length(),
+        this.shiftsToAngle(shiftHorizontal, shiftVertical),
+        this.shiftsToLongLat(shiftHorizontal, shiftVertical),
+      )
+      console.log("Impact: " + "   " + impact.longLat.lamb + "   " + impact.longLat.phi + "   " + impact.angle + "   " + impact.mass + "   " + impact.velocity + "   " + impact.density)
       DataBroker.instance.setImpact(impact)
     }
   }
@@ -54,15 +54,15 @@ export class MeteorImpactMonitor {
     return -Math.atan(shift / Math.sqrt(1 + RADIUS_OF_EARTH_KM * RADIUS_OF_EARTH_KM - shift * shift))
   }
 
-  shiftsToLongLat(horizontalShift: number, verticalShift: number): { longitude: number, latitude: number } {
+  shiftsToLongLat(horizontalShift: number, verticalShift: number): { lamb: number, phi: number } {
     const R = RADIUS_OF_EARTH_KM;
     const x = horizontalShift; // km
     const y = verticalShift;   // km
 
     // Sicherheitscheck: außerhalb des Sichtkreises wäre vorher schon gefiltert,
     // aber clamp zur Sicherheit.
-    const r2 = x*x + y*y;
-    const z = Math.sqrt(Math.max(0, R*R - r2)); // km
+    const r2 = x * x + y * y;
+    const z = Math.sqrt(Math.max(0, R * R - r2)); // km
 
     // Kamera-Basis aus Blickrichtung w (forward)
     const w = this.velocityNormalized.normalized();  // forward zur Erdmitte
@@ -77,10 +77,10 @@ export class MeteorImpactMonitor {
       .normalized();
 
     // Geozentrische Koordinaten (ohne Erdrotation in ECEF)
-    const longitude = Math.atan2(rHat.y, rHat.x);
-    const latitude  = Math.asin(rHat.z);
+    const lamb = Math.atan2(rHat.y, rHat.x);
+    const phi = Math.asin(rHat.z);
 
-    return { longitude, latitude };
+    return {lamb, phi};
   }
 
   /**
